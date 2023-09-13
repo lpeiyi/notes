@@ -10,6 +10,6 @@
 3.**操作系统**  
 [Linux](https://github.com/lpeiyi/notes/blob/main/Linux/Linux.md)   
 
-4.**脚本语言**
+4.**脚本语言**   
 [Python]()   
 [Shell]()
