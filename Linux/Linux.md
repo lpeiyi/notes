@@ -47,16 +47,25 @@ Linux 系统中一切皆为文件（什么都用文件表示）
 ### 3.1.1 ifconfig
 可以查看当前 ip 但是如果是 最小化安装 要先装 net-tools
 
-### 3.1.2 修改IP为静态
+### 3.1.2 修改NAT网卡IP为静态
+
+先查看NAT网卡的子网IP、子网掩码、网关IP，依次点击VMware Worksta工具栏的`编辑`->`虚拟网络编辑器`->`NAT设置`。
+
+![Alt text](image-1.png)
+
+把子网IP、子网掩码、网关IP记在小本本上，待会要用到。
+
+接下来修改虚拟机的网卡配置。
+
 文件路径：/etc/sysconfig/network-scripts/ifcfg-ens32(或ifcfg-ens33)
-```txt
-TYPE="Ethernet"    #网络类型（通常是Ethemet）
+
+```bash
+vim /etc/sysconfig/network-scripts/ifcfg-ens33
+
+TYPE="Ethernet" 
 PROXY_METHOD="none"
 BROWSER_ONLY="no"
-
-修改：
-BOOTPROTO="static"   #IP的配置方法[none|static|bootp|dhcp]（引导时不 使用协议|静态分配IP|BOOTP协议|DHCP协议）
-
+BOOTPROTO="dhcp" 
 DEFROUTE="yes"
 IPV4_FAILURE_FATAL="no"
 IPV6INIT="yes"
@@ -65,21 +74,26 @@ IPV6_DEFROUTE="yes"
 IPV6_FAILURE_FATAL="no"
 IPV6_ADDR_GEN_MODE="stable-privacy"
 NAME="ens33"   
-UUID="e83804c1-3257-4584-81bb-660665ac22f6"   #随机id
-DEVICE="ens33"   #接口名（设备,网卡）
-ONBOOT="yes"   #系统启动的时候网络接口是否有效（yes/no）
+UUID="e83804c1-3257-4584-81bb-660665ac22f6"
+DEVICE="ens33" 
+ONBOOT="yes"
+```
 
+```
+修改：
+BOOTPROTO="static" #IP的配置方法[none|static|bootp|dhcp]（引导时不 使用协议|静态分配IP|BOOTP协议|DHCP协议）
 
 添加：
-#IP地址
-IPADDR=192.168.1.100  
-#网关  
-GATEWAY=192.168.1.2      
-#域名解析器
-DNS1=192.168.1.2
+IPADDR=192.168.131.101  #IP地址
+NETMASK=255.255.255.0   #子网掩码
+GATEWAY=192.168.131.2   #网关
+DNS1=192.168.131.2      #域名解析器
 ```
+
 修改配置文件后，需要重启网络服务：  
 [root@hadoop100 ~]# systemctl restart network
+
+
 ### 3.1.3 配置主机名
 查看当前服务器主机名称  
 [root@hadoop100 ~]# hostname
