@@ -34,6 +34,15 @@ Linux 系统中一切皆为文件（什么都用文件表示）
 15. /var 存放如各种日志文件等，经常被修改的文件目录
 
 # 三、Linux网络配置和系统配置 ★
+
+安装好VMware Workstation后，我们的主机会自动创建两个虚拟网卡，`VMware Network Adapter VMnet1`和`VMware Network Adapter VMnet8`。
+
+![Alt text](image/3.1.png)
+
+可以对应我们虚拟机中的Host-only和NAT。
+
+![Alt text](image-1.png)
+
 ## 3.1 网络配置 ★
 ### 3.1.1 ifconfig
 可以查看当前 ip 但是如果是 最小化安装 要先装 net-tools
