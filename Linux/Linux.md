@@ -95,6 +95,10 @@ DNS1=192.168.131.2      #域名解析器
 [root@hadoop100 ~]# systemctl restart network
 ```
 
+#### 多网卡配置
+
+参见 《Linux网络配置》https://www.modb.pro/db/1719973817177694208
+
 ### 3.1.3 配置主机名
 查看当前服务器主机名称  
 [root@hadoop100 ~]# hostname
