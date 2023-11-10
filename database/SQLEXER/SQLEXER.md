@@ -240,7 +240,6 @@ having count(*) >= 3;
 其他方法：
 ```sql
 --偏移函数
-
 select distinct num as "ConsecutiveNums"
 from (
     select num, lag(num,1) over(order by id) as lag, lead(num,1) over(order by id) as lead

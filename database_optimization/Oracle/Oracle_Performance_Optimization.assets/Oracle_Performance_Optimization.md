@@ -218,7 +218,7 @@ latch有40余种，但作为DBA关心的主要应有以下几种：
 
 ### 2.4.3 Latch 的机制
 
-![image-20221027153327196](Oracle_Performance_Optimization.assets/image-20221027153327196.png)
+![image-20221027153327196](images/image-20221027153327196.png)
 
 ### 2.4.4 Latch的获取
 
@@ -255,7 +255,7 @@ Latch导致的性能问题，通常是一个系统层面的问题：
 
 oracle数据库里SQL语句的执行过程可以用下`图1-1`来表示：
 
-![image-20221031190944971](Oracle_Performance_Optimization.assets/image-20221031190944971.png)
+![image-20221031190944971](images/image-20221031190944971.png)
 
 **注意**：优化器的输入是经过解析后（检查目标SQL的语法、语义和权限）的目标SQL，输出是目标SQL的执行计划。
 
@@ -307,7 +307,7 @@ Cardinality和成本值的估算是息息相关的，因为Oracle得到指定结
 
 **可选择率**，是CBO特有的概念，是指世家特定谓词条件后返回结果集的记录数占未施加任何谓词条件的原始结果集的记录数的比率。用公式表示为：
 
-![image-20221101104758856](Oracle_Performance_Optimization.assets/image-20221101104758856.png)
+![image-20221101104758856](images/image-20221101104758856.png)
 
 Selectivity的值在0~1之间，**值越小，可选择性越高**，即当值为1时选择性是最差的。
 
@@ -461,7 +461,7 @@ Plan hash value: 1116584662
 
 B树索引是oracle中最常用的索引。B树索引结构主要由三部分组成根节点、分支节点、叶子节点。 B树索引就是 一颗二叉树；叶子节点（双向链表）包含索引列和指向表中每个匹配行的rowid值。所有叶子节点具有相同的深度，因而不管查询条件怎样，查询速度基本相同。B树索引结构能够适应精确查询（=）、模糊查询（like）和比较查询（>）。
 
-![image-20221104162302627](Oracle_Performance_Optimization.assets/image-20221104162302627.png)
+![image-20221104162302627](images/image-20221104162302627.png)
 
 B树索引包含两种类型的数据块，一是索引分支块，而是索引叶子块。在Oracle里访问B树索引必须从根节点开始，到分支快，再到叶子块。
 
@@ -556,7 +556,7 @@ COL2 VARCHAR2(10) Y
 
 Inner Join，**查询结果只返回那些完全满足连接条件的记**录。
 
-![image-20221107163120176](Oracle_Performance_Optimization.assets/image-20221107163120176.png)
+![image-20221107163120176](images/image-20221107163120176.png)
 
 ```sql
 SQL> SELECT t1.*,t2.* from t1 join t2 on t1.id = t2.id;
@@ -886,7 +886,7 @@ Plan hash value: 1713220790
 
 星型连接的各维度表之间没有直接的关联条件，其事实表和各维度表之间是基于事实表的外键列和对应维度表的主键列之间的连接，并且通常在事实表的外键列上还会存在对应的位图索引。
 
-![image-20221113004532728](Oracle_Performance_Optimization.assets/image-20221113004532728.png)
+![image-20221113004532728](images/image-20221113004532728.png)
 
 上图就是-一个典型的星型连接原型，其中表SALES和表CUSTOMERS、RODUCTS、 TIMES、PROMOTIONS、CHANNELS之间通过外键列和主键列关联，表SALES是事实表（它的数据量可能会非常大）剩下的表都是维度表（它们的数据量和SALES相比会小很多），而且它们之间没有直接的关联关系。
 
@@ -958,15 +958,15 @@ Column Projection Information (identified by operation id):
 
 1. **目标SQL的正文、SQL_ID和Plan hash value**
 
-   ![image-20221114164839457](Oracle_Performance_Optimization.assets/image-20221114164839457.png)
+   ![image-20221114164839457](images/image-20221114164839457.png)
 
    SQL的正文为select t1.id,t1.col,t2.col from t1,t2 where t1.id = t2.id，SQL_ID为0haat1w89ws0k，Plan hash value为2959412835。
 
 2. **执行计划的主体**
 
-   ![image-20221114170009054](Oracle_Performance_Optimization.assets/image-20221114170009054.png)
+   ![image-20221114170009054](images/image-20221114170009054.png)
 
-   ![image-20221114170314411](Oracle_Performance_Optimization.assets/image-20221114170314411.png)
+   ![image-20221114170314411](images/image-20221114170314411.png)
 
    此部分可以看到在执行目标SQL时的具体步骤，包含执行步骤顺序、步骤对应的名称(对象)、ROWS(Cardinality)、Bytes、Cost(成本)、Time(执行时间)。
 
@@ -1427,7 +1427,7 @@ Library Cache，是SGA中的一块内存区域（具体来说，是Shared Pool�
 
 实际上，库缓存对象句柄是以哈希表（Hash Table）的方式存储在库缓存中的，这意味着Oracle会通过相关的哈希运算来存储和访问对应的库缓存对象句柄。库缓存的组成结构如下：
 
-![image-20221129172916819](Oracle_Performance_Optimization.assets/image-20221129172916819.png)
+![image-20221129172916819](images/image-20221129172916819.png)
 
 从图中可以看出，整个库缓存可以看作是由一组Hash Bucket 所组成，每一个Hash Bucket 都对应不同的哈希值。对于单个Hash Bucket而言，里面存储的就是哈希值相同的所有库缓存对象句柄，同一个Hash Bucket中不同的库缓存对象句柄之间会用指针连接起来，即同-一个Hash Bucket中不同的库缓存对象句柄之间实际上组成了一个库缓存对象句柄链表（Library Cache Object Handles）。
 
@@ -1435,7 +1435,7 @@ Library Cache，是SGA中的一块内存区域（具体来说，是Shared Pool�
 
 #### 5.1.1.1 Share Cursor的含义
 
-![image-20221127220755940](Oracle_Performance_Optimization.assets/image-20221127220755940.png)
+![image-20221127220755940](images/image-20221127220755940.png)
 
 从上图可以看出，Oracle在解析目标SQL时去库缓存中查找匹配Shared Cursor的过程实际上时依次顺序执行以下步骤：
 
