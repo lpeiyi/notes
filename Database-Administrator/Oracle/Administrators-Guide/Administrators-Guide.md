@@ -2,6 +2,267 @@
 
 [toc]
 
+# 说明
+
+此文章包含三个部分，第一部分主要介绍Oracle的体系结构，章节为1到4章。第二部分主要介绍Oracle数据库的管理，章节为5到11章。第三部分主要介绍高可用，章节为12到19章。
+
+# 1 Oracle体系结构概述
+
+本章将介绍Oracle 12c的基础知识和后面章节的一些特性，以及使用Oracle通用安装程序（Oracle Universal Installer，OUI）和数据库配置助手（Database Configuration Assistant，DBCA）安装Oracle 12c的基本知识。
+
+学习完本章节，你将会对Oracle数据库有一个整体性的了解。
+
+## 1.1 数据库和实例概述
+
+相信很多人不清楚数据库和实例的关系，更有甚者以为数据库和实例是同一个东西的。实际上，他们间存在很大区别，是完全不同的实体，但又紧密相关。
+
+数据库和实例架构图如下所示：
+
+![Alt text](image-1.png)
+
+### 1.1.1 数据库
+
+数据库是一组位于磁盘上用于存储数据的文件集。这些文件可以独立于数据库实例存在。如下图所示：
+
+![Alt text](image.png)
+
+
+数据库由各种物理和逻辑结构组成，而表则是数据库中最重要的逻辑结构。“表”由包含相关数据的行和列组成。数据库至少要有存储有用信息的表。
+
+组成数据库的文件主要分为两类：数据库文件和非数据库文件。两者之间的区别在于存储何种数据。数据库文件包含数据和元数据，非数据库文件则包含初始参数和日志记录信息等。
+
+### 1.1.2 实例
+
+实例是管理数据库文件的内存结构集合。由一个称为系统全局区SGA的共享内存区和一些后台进程组成。这些后台进程在SGA和磁盘上的数据库文件之间交互。实例可以独立存在于数据库文件之外。如下图所示：
+
+![Alt text](image-2.png)
+
+Oracle实例架构分为单实例和RAC。
+
+在单实例中，数据库和实例时一对一关系。
+
+在Oracle RAC中，数据库和实例是一对多，一个数据可对应多个实例，即内存和后台进程每个实例独立，而数据库文件共享。
+
+## 1.2 逻辑存储结构
+
+Oracle数据库中的数据文件被分组到一个或多个表空间中。在每个表空间中，逻辑数据库结构（如表和索引）都是片段，被进一步细分为“盘区”（extent）和“块（block）”。这种存储的逻辑细分允许Oracle更有效地控制磁盘空间的利用率。如下图所示：
+
+![Alt text](image-3.png)
+
+下面介绍逻辑结构的组成部分。他们之间的关系以及和物理结构的关系如下图所示：
+
+![Alt text](image-4.png)
+
+### 1.2.1 数据块（data block）
+
+数据块是Oracle数据库中最小的数据存储逻辑单元，即数据块是Oracle数据库可以使用或分配的最小存储单元。
+
+块的大小是数据库内给定表空间中特定数量的存储字节，默认是8kb，通过初始参数DB_BLOCK _SIZE指定大小。数据库块大小需要是操作系统块大小的整数倍，有利于提升磁盘I/O的效率。
+
+### 1.2.2 区（extent）
+
+区是由一组逻辑连续的数据块组成，用于存储特定类型的信息。例如，一个24kb的区，默认由3个8kb的数据块组成。
+
+### 1.2.3 段（segment）
+
+段是为特定的数据库对象（例如表、索引等）分配的一组区的集合。每一个表、索引等数据库对象都是一个段。
+
+段的分类：
+
+1. 数据段：存储非集群表、表分区或表集群数据的段。如果表是分区表或集群表，则表会被分配多个段；
+2. 索引段：存储非分区索引或分区索引数据的段；
+3. 临时段：当一个SQL语句需要一个临时的数据库区域来完成执行时，Oracle数据库创建的一个段。例如，排序操作所需要的空间超过了PGA时，需要创建临时段完成排序；
+4. 回滚段：在undo表空间中的段。
+
+例如，employees表的数据存储在它自己的数据段中，而employees表的每一个索引存储在它自己的索引段中。
+
+每一个需要存储的数据库对象由单个段组成。
+
+### 1.2.4 表空间（tablespace）
+
+表空间是包含一个或多个段的数据库存储单元。每一个段仅属于一个表空间，因此，一个段的所有区都存储在同一个表空间中。
+
+在表空间内，一个段可以包含来自多个数据文件的区。例如，一个段的区有的存储在datafile1，也有的存储在datafile2。但是，一个区不能跨数据文件，只能存储于同一个数据文件中。根据以上特性，我们又可以知道，Oracle表空间(tablespace)由一个或多个数据文件组成，一个数据文件是且只能是一个表空间的一部分。
+
+表空间的管理分为字典管理或本地管理。
+
+## 1.3 逻辑数据库结构
+
+## 1.3.1 表
+
+表是Oracle数据库中的基本存储单位，表中的数据总是存储在行和列中。
+
+下面介绍Oracle中不同类型的表。
+
+**一、关系表**
+
+关系表是数据库中最常见的表类型。关系表以“堆（heap）”的形式进行组织；换句话说，表中的行没按任何特定顺序存储。表的每一行包含一列或多列，每一列都有一种数据类型和长度。
+
+**二、临时表**
+
+临时表仅保存在事务或会话期间存在的数据。临时表中的数据对会话是私有的，每个会话只能查看和修改自己的数据。
+
+临时表分为全局临时表和私有临时表。他们的特点如下图所示：
+
+![Alt text](image-5.png)
+
+
+**三、索引组织表**
+
+创建索引可以更有效地找到表中的特定行，但是，这也会带来一些额外的系统开销。因为数据库必须同时维护表的数据行和索引条目。
+
+如果表包含的列并不多，而且对表的访问主要集中在某一列上，应怎么做？这种情况下，索引组织表（Index Organized Table，IOT）可能就是正确的解决方案。
+
+索引组织表的数据按主键排序手段被存储在B-树索引中，除了存储主键列值外还存储非键列的值。普通索引只存储索引列，而索引组织表则存储表的所有列的值。IOT不存在主键的空间开销，因为索引就是数据，数据就是索引，二者已经合二为一。
+
+IOT最明显的优点在于只需要维护一个存储结构，而非两个。例如，表中主键的值只在IOT中存储一次，而在普通表中则需要存储两次。
+
+索引组织表一般适应于静态表，且查询多以主键列。当表的大部分列当作主键列时，且表相对静态，比较适合创建索引组织表。
+
+IOT适用的场合有：
+1. 完全由主键组成的表；
+2. 代码查找表，维度表；
+3. 如果你想保证数据存储在某个位置上，或者希望数据以某种特定的顺序物理存储。
+
+**四、对象表**
+
+对象表是一种特殊类型的表，其中每一行代表一个对象。
+
+Oracle对象类型是用户自定义的类型，具有名称、属性和方法。对象类型可以将真实世界的实体(如客户和采购订单)建模为数据库中的对象。
+
+对象类型定义逻辑结构，但不创建存储。例如：
+
+```sql
+CREATE TYPE department_typ AS OBJECT
+   ( d_name     VARCHAR2(100),
+     d_address  VARCHAR2(200) );
+/
+```
+
+下面创建department_typ类型的表，并插入一行记录：
+
+```sql
+CREATE TABLE departments_obj_t OF department_typ;
+INSERT INTO departments_obj_t VALUES ('hr', '10 Main St, Sometown, CA');
+```
+
+**五、外部表**
+
+![Alt text](image-6.png)
+
+外部表允许用户访问数据源，如文本文件，就如同该数据源是数据库中的表一样。表的元数据存储在Oracle数据字典中，但表的内容存储在外部。
+
+当Oracle数据库应用程序必须访问非关系数据时，外部表非常有用。
+
+但是，在外部表上不可以创建索引，也不可以对其执行插入、更新或删除操作。
+
+创建外部表的例子：
+
+要创建外部表的数据在两个文本文件empxt1.dat和empxt2.dat中。
+
+empxt1.dat文件包含如下样例数据：
+```dat
+360,Jane,Janus,ST_CLERK,121,17-MAY-2001,3000,0,50,jjanus
+361,Mark,Jasper,SA_REP,145,17-MAY-2001,8000,.1,80,mjasper
+362,Brenda,Starr,AD_ASST,200,17-MAY-2001,5500,0,10,bstarr
+363,Alex,Alda,AC_MGR,145,17-MAY-2001,9000,.15,80,aalda
+```
+
+empxt2.dat文件包含如下样例数据：
+
+```dat
+401,Jesse,Cromwell,HR_REP,203,17-MAY-2001,7000,0,40,jcromwel
+402,Abby,Applegate,IT_PROG,103,17-MAY-2001,9000,.2,60,aapplega
+403,Carol,Cousins,AD_VP,100,17-MAY-2001,27000,.3,90,ccousins
+404,John,Richardson,AC_ACCOUNT,205,17-MAY-2001,5000,0,110,jrichard
+```
+
+在hr schema中创建名为admin_ext_employees的外部表： 
+```sql
+CONNECT  /  AS SYSDBA;
+-- Set up directories and grant access to hr 
+CREATE OR REPLACE DIRECTORY admin_dat_dir
+    AS '/flatfiles/data'; 
+CREATE OR REPLACE DIRECTORY admin_log_dir 
+    AS '/flatfiles/log'; 
+CREATE OR REPLACE DIRECTORY admin_bad_dir 
+    AS '/flatfiles/bad'; 
+GRANT READ ON DIRECTORY admin_dat_dir TO hr; 
+GRANT WRITE ON DIRECTORY admin_log_dir TO hr; 
+GRANT WRITE ON DIRECTORY admin_bad_dir TO hr;
+-- hr connects. Provide the user password (hr) when prompted.
+CONNECT hr
+-- create the external table
+CREATE TABLE admin_ext_employees
+                   (employee_id       NUMBER(4), 
+                    first_name        VARCHAR2(20),
+                    last_name         VARCHAR2(25), 
+                    job_id            VARCHAR2(10),
+                    manager_id        NUMBER(4),
+                    hire_date         DATE,
+                    salary            NUMBER(8,2),
+                    commission_pct    NUMBER(2,2),
+                    department_id     NUMBER(4),
+                    email             VARCHAR2(25) 
+                   ) 
+     ORGANIZATION EXTERNAL 
+     ( 
+       TYPE ORACLE_LOADER 
+       DEFAULT DIRECTORY admin_dat_dir 
+       ACCESS PARAMETERS 
+       ( 
+         records delimited by newline 
+         badfile admin_bad_dir:'empxt%a_%p.bad' 
+         logfile admin_log_dir:'empxt%a_%p.log' 
+         fields terminated by ',' 
+         missing field values are null 
+         ( employee_id, first_name, last_name, job_id, manager_id, 
+           hire_date char date_format date mask "dd-mon-yyyy", 
+           salary, commission_pct, department_id, email 
+         ) 
+       ) 
+       LOCATION ('empxt1.dat', 'empxt2.dat') 
+     ) 
+     PARALLEL 
+     REJECT LIMIT UNLIMITED; 
+-- enable parallel for loading (good if lots of data to load)
+ALTER SESSION ENABLE PARALLEL DML;
+-- load the data in hr employees table
+INSERT INTO employees (employee_id, first_name, last_name, job_id, manager_id,
+                       hire_date, salary, commission_pct, department_id, email) 
+            SELECT * FROM admin_ext_employees;
+
+```
+
+**六、集群表**
+
+如果经常同时访问两个或多个表（如一个订单表和一个行项明细表），则创建群集表（clustered table）可能是一种较好的方法，它可以改进引用这些表的查询的性能。在具有相关行项（line-item）明细表的订单表中，订单标题信息可与行项明细记录存储在同一个块中，从而减少检索订单和行项信息所需要的I/O数量。两个表共有的列也称为“群集键值”。
+
+## 1.3.2 索引
+
+## 1.4 物理存储结构
+## 1.5 多元复用数据库文件
+## 1.6 内存结构
+## 1.7 备份和恢复概述
+## 1.8 安全功能
+## 1.9 实时应用集群
+## 1.10 流
+## 1.11 企业管理器
+## 1.12 初始化参数
+## 1.13 本章小结
+
+# 2 安装和升级Oracle Database 19c
+
+## 2.1 安装19c
+
+参见：
+
+## 2.2 升级到19c
+
+参见：
+
+# 3 表空间管理
+
 # 4 物理数据库布局和存储管理
 ## 4.1 传统磁盘空间存储
 ## 4.2 自动存储管理
@@ -148,9 +409,15 @@ lrwxrwxrwx 1 root root 7 Oct 15 18:14 /dev/asmdisks/asmdisk10 -> ../sdk1
 
 **ASM磁盘添加完毕！！**
 
+# 5 开发和实现应用程序
+# 6 监控空间利用率
+# 7 使用和撤销表空间管理事务
+# 8 数据库调整
+# 9 In-Memory概述
+# 10 数据库安全性和审核
 
 # 11 性能优化
-## swingbench 工具
+## 11.1 swingbench 工具
 用于Oracle压力测试
 安装
 [](https://github.com/domgiles/swingbench-public)
@@ -930,7 +1197,9 @@ RMAN并不仅是一个可通过Web界面使用的客户端可执行程序。它�
 
 ### 14.1.1 RMAN组件
 
-RMAN环境中首要的最基本组件是可执行的RMAN程序。该程序和其他Oracle实用程序都位于$ORACLE_HOME/bin目录中，默认情况下标准版和企业版的Oracle Database 12c都会安装该程序。可从命令行提示符调用带有或者不带有命令行参数的RMAN。下例将使用操作系统身份验证来启动RMAN，而不需要连接到一个恢复目录。
+RMAN环境中首要的最基本组件是可执行的RMAN程序。该程序和其他Oracle实用程序都位于$ORACLE_HOME/bin目录中，默认情况下标准版和企业版的Oracle Database 12c都会安装该程序。可从命令行提示符调用带有或者不带有命令行参数的RMAN。
+
+下例将使用操作系统身份验证来启动RMAN，而不需要连接到一个恢复目录。
 
 ```bash
 [oracle@19c-Grid ~]$ rman target /
@@ -941,8 +1210,6 @@ Version 19.3.0.0.0
 Copyright (c) 1982, 2019, Oracle and/or its affiliates.  All rights reserved.
 
 connected to target database: LUCDB (DBID=71583637)
-
-RMAN>
 ```
 
 我们不会经常使用RMAN，除非需要备份数据库。可在恢复目录中对一个或多个目标数据库进行编目，此外，正在备份的数据库的控制文件包含有关RMAN所执行的备份的信息。从RMAN客户程序中，还可为那些使用RMAN自带的命令不能执行的操作发出SQL命令。
@@ -975,3 +1242,9 @@ run
 ```sql
 duplicate target database for standby nofilenamecheck;
 ```
+
+# 15 Oracle Data Guard
+# 16 其他高可用特性
+# 17 Oracle Net
+# 18 管理大型数据库
+# 19 管理分布式数据库
