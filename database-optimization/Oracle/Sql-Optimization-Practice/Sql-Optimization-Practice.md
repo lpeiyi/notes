@@ -9,7 +9,6 @@
 ## 2.1 优化了一半的SQL
 一个不是很TOP的TOP sql（一般刘老师会收集AWR 的TOP 50 sql，默认只有大概20个）使用了Hint，而其他SQL基本上都没有使用hint，其中必有隐情。顺手分析一下 ：
 
-
 虽然SQL平均执行时间0.25秒，但是执行次数多，因此也在TOP50之列。
 
 SQL：
@@ -972,12 +971,16 @@ END number2date2;
 
 https://docs.oracle.com/en/database/oracle/oracle-database/19/tgsql/performing-application-tracing.html#GUID-681AB1DC-082B-460C-8656-DC3286627D0C
  
+![Alt text](image-19.png)
+
 大概就是，递归SQL是Oracle数据库在执行用户发出的SQL语句时必须发出的附加SQL。从概念上讲，递归SQL是“副作用SQL”。例如，如果会话将一行插入到没有足够空间容纳该行的表中，那么数据库将进行递归SQL调用来动态分配空间。时，数据库也会生成递归调用。数据字典信息在内存中不可用，因此必须从磁盘中检索。
 
 IBM的手册中，讲了递归调用的触发条件：
 
 http://publib.boulder.ibm.com/tividd/td/ITMD/SC23-4724-00/en_US/HTML/oraclepac510rg59.htm
  
+![Alt text](image-20.png)
+
 所以，大概是因为直接return返回计算结果不需要执行sql语句。
 
 **学习心得：**
@@ -987,7 +990,7 @@ http://publib.boulder.ibm.com/tividd/td/ITMD/SC23-4724-00/en_US/HTML/oraclepac51
 ## 2.11 必须掌握用分析函数去重的方法
 
 原来SQL:
-
+```sql
 SELECT T1.COL_1, T1.COL_2, T1.COL_3,T2.B_TYPE,T1.SERV_TYPE,T1.VALID_DATE
   FROM TABLE_1 T1, TABLE_2 T2
  WHERE T1.SERV_TYPE = T2.SERVTYPE
@@ -996,12 +999,12 @@ SELECT T1.COL_1, T1.COL_2, T1.COL_3,T2.B_TYPE,T1.SERV_TYPE,T1.VALID_DATE
                          WHERE T3.COL_1 = T1.COL_1
                            AND T3.COL_2 = T1.COL_2
                            AND T3.COL_3 = T1.COL_3);
-原SQL说明：
-
+```
+原SQL说明：   
 table_1的col_1,col_2,col_3 联合起来对应了多个valid_date，先通过自关联取最大的valid_date。
 
 改写后SQL:
-
+```sql
 SELECT T1.COL_1, T1.COL_2, T1.COL_3,T2.B_TYPE,T1.SERV_TYPE,T1.VALID_DATE
   FROM (SELECT *
           FROM (SELECT T3.COL_1,
@@ -1014,17 +1017,16 @@ SELECT T1.COL_1, T1.COL_2, T1.COL_3,T2.B_TYPE,T1.SERV_TYPE,T1.VALID_DATE
          WHERE RR = 1) T1,
        TABLE_2 T2
  WHERE T1.SERV_TYPE = T2.SERVTYPE;
-改写说明：
-
-使用分析函数ROW_NUMBER()的好处，是不需要分组和自关联，table_1表不需要重复扫描。
-
+```
+改写说明：   
+使用分析函数ROW_NUMBER()的好处，是不需要分组和自关联，table_1表不需要重复扫描。   
 改写后的SQL要比原SQL效率提高几倍。但不是等价改写。但是，改写后的SQL业务逻辑更严谨：原SQL如果table_1表相同col_1、col_2、col_3对应的最大valid_date有重复，则返回的结果也是有重复的，这应该不是SQL的本意。而改写后的SQL则不会返回重复记录。如果一定要等价改写，可以使用max()分析函数。
 
 **学习心得：**
 
 截至本章节，我们已经用分析函数优化了5个案例，这足以看出分析函数功能的强大。在本章中，我们用于取分组后的最大值（去重），省去了分组和自连接，减少了表扫描次数，性能提升了好几倍。在以往的案例里，分析函数还可以用于去重，排序等等。我们最常用的就是去重功能，应该掌握！！！
 此外，刚看到案例时，我大概花了1分钟完成了对原SQL的改写，觉得自己不是一般牛逼，改写的SQL如下：
-
+```sql
 SELECT T.COL_1, T.COL_2, T.COL_3,T.B_TYPE,T.SERV_TYPE,T.VALID_DATE
   FROM (SELECT T1.COL_1,
                T1.COL_2,
@@ -1036,53 +1038,58 @@ SELECT T.COL_1, T.COL_2, T.COL_3,T.B_TYPE,T.SERV_TYPE,T.VALID_DATE
           FROM TABLE_1 T1, TABLE_2 T2
          WHERE T1.SERV_TYPE = T2.SERVTYPE) T
  WHERE RK = 1;
-点击执行，出来的结果会是什么？
+```
+点击执行，出来的结果会是什么？   
 结果只返回了一条记录，很明显改写后的逻辑不对。这种情况对我这种初级优化选手是常发生的事情，本质原因是急于求成，没有完全理解待优化SQL的逻辑，以至于改写的SQL无效。而改写最基本的原则就是，不能改变原SQL的逻辑。因此，我们在拿到待优化SQL时，应该沉下心来梳理他的逻辑，为做好优化奠定基础。
 
-附件：
+附件：[demo-211.sql](./files/demo-211.sql)
 
- 
 ## 2.12 区间检索
 ### 2.12.1 尝试优化
 有个sql是根据IP地址查询对应的国家/地区（根据号码查询归属地也属类似业务）。
 
 代码如下：
-
+```sql
 Select country_code
   From COUNTRY_IP_RANGE IP
  WHERE IP.Start_Ip1 <= ip_to_number1(:ip)
    AND IP.End_Ip1 >= ip_to_number1(:ip);
+```
 其中ip_to_number1是一个将ip地址转换成整数的函数。COUNTRY_IP_RANGE表记录数大概有12万条。存在一个start_IP1和end_ip1字段上的联合索引。SQL每次最多只返回一条记录。当前的性能问题是查询一个小IP（如：1.0.0.1）时，只需要几个buffer gets，查询一个较大的IP时（如：222.252.0.123），buffer gets要400多。
 
 优化1：
 
 根据业务需求SQL每次最多只返回一条数据，因此添加一个rownum = 1的谓词条件：
-
+```sql
 Select country_code
   From COUNTRY_IP_RANGE IP
  WHERE IP.Start_Ip1 <= ip_to_number1(:ip)
    AND IP.End_Ip1 >= ip_to_number1(:ip)
    and ROWNUM = 1;
+```
 加了这个条件后，性能只有一点点改善，每次buffer gets会少1。
 
 优化2：
 
 根据业务特点及索引默认扫描方式为升序扫描，改变索引扫描方式，使用索引降序扫描，用index_rs_desc的hint实现：（不懂）
+```sql
 Select /*+ INDEX_RS_DESC(ip IDX_IP1) */
  country_code
   From COUNTRY_IP_RANGE IP
  WHERE IP.Start_Ip1 <= ip_to_number1(:ip)
    AND IP.End_Ip1 >= ip_to_number1(:ip)
    and ROWNUM = 1;
+```
 其中IDX_IP1是Start_Ip1和End_Ip1两个字段的联合索引，做到这一步后，每次的buffer gets只有3了（不懂，谁能解答一下？在这里为什么降序扫描比升序扫描性能好？）。如果不用hint，可以通过改变联合索引的先后顺序来实现优化效果，即联合索引的顺序是End_Ip1, Start_Ip1。
 
 个人理解：在这里用到索引降序扫描是因为谓词条件的写法为 Start_Ip1 <= ip_to_number1(:ip) AND End_Ip1 >= ip_to_number1(:ip),我们一般取区间是start_ip1 >= xxx and end_ip1 <= xxx，这两种写法的逻辑不一样，索引扫面的顺序相反。（不知道对不对）
+
 优化3：
 
 前两步优化已经完成了95%，还有一种特殊情况就是，给定得IP地址找不到对应区间的数据，查询结果返回为空，这个时候仍需要大量的buffer gets。但是光靠SQL本身已经无能为力。
 
 最终的优化方法，通过plsql解决，创建function:
-
+```sql
 CREATE OR REPLACE function get_ip_area(v_ip varchar2) return varchar2 IS
   v_start_ip1    NUMBER;
   v_COUNTRY_CODE varchar2(30);
@@ -1104,6 +1111,7 @@ EXCEPTION
     RETURN 'N/A';
 END get_ip_area;
 /
+```
 使用方法select get_ip_area('78.138.30.176') from dual; 使用了函数后，性能问题就彻底解决了。
 
 **学习心得：**
@@ -1114,12 +1122,14 @@ END get_ip_area;
 
 最后，索引范围扫描（Index Range Scan）、索引全扫描（Index Full Scan）、索引唯一扫描（Unique Index Scan）这三种B-TREE索引扫描方式的执行结果是有序的（ps：union是有序的，union all是无序的）。也就是说返回结果不需要做order by也能得到有序的结果。但是，尽管这些索引扫描方式可以返回有序的结果，但在某些情况下，由于优化器的选择或者其他因素（如并行执行），查询结果可能不是完全有序的。为了确保有序性，可以使用 ORDER BY 子句对查询结果进行排序。有索引的情况下，order by 的效率会很高，并且不一定会执行排序操作。
 
-附件：demo-1121.sql，emp-1121.sql
+附件：[demo-2121.sql](./files/demo-2121.sql)，[emp-2121.sql](./files/emp-2121.sql)
+
 ### 2.12.2 最佳优化方案（1.12.1再优化）
+
 在1.12.1案例中，最终使用了创建function的方式完成优化。本来以为没有优化空间了，再仔细琢磨了以下，发现还是可以直接使用SQL替代原来的function，SQL还真是博大精深啊。
 
 优化写法，SQL代码替代原function，索引也可以将组合索引改为end_ip1单字段索引：
-
+```sql
 SELECT case
          when start_ip1 <= :B1 then
           COUNTRY_CODE
@@ -1131,26 +1141,31 @@ SELECT case
          WHERE end_ip1 >= :B1
          order by end_ip1)
  WHERE ROWNUM = 1;
+```
 这个写法要比原来function的性能要好那么一丁点，主要优点是简洁了，不用写function那么麻烦。
 
 对于优化写法，不论大的IP还是小的IP，匹配不到区间都是3个buffer gets。而对于普通写法，匹配不到区间时，buffer gets会随着查询值(:B1)与最大值（max end_ip1）的远近有很大变化，查询值越小效率越差。
 
-思考：
 
+**思考题：**  
 优化写法中，有了索引，默认索引升序扫描，为什么还要加order by?
-答案：
 
-根据业务规则，结果要取end_ip1 >= :B1升序后的第一条数据，根据伪劣rownum的特性，不管结果是否有序，第一条记录的rownum都为1，所以我们要先排序再用rownum取出第一条数据。这里有索引，一般情况下是不需要order by的，但是假如索引失效了，全表扫描会随机选一条的end_ip1 >= :B1的记录，造成结果是错误的，这就违背了改写的基本原则。所以必须加上order by，索引失效时sql可以慢，但是不可以出错。
+答案：  
+根据业务规则，结果要取end_ip1 >= :B1升序后的第一条数据，根据伪劣rownum的特性，不管结果是否有序，第一条记录的rownum都为1，所以我们要先排序再用rownum取出第一条数据。  
+这里有索引，一般情况下是不需要order by的，但是假如索引失效了，全表扫描会随机选一条的end_ip1 >= :B1的记录，造成结果是错误的，这就违背了改写的基本原则。所以必须加上order by，索引失效时sql可以慢，但是不可以出错。
 
-学习心得： 
+
+**学习心得：**
 在有索引的情况下，需要进行排序时，一般也建议加上order by语句。当索引有效时，执行结果是有序，order by语句不会产生排序操作。只有当索引失效后，order by语句才会产生排序操作。
 
-附件：demo-1122.sql
+附件：[demo-2122.sql](./files/demo-2122.sql)
+
 ## 2.13 数据分布决定SQL写法
+
 本案例是将一个merge SQL改写，对于目标表与来源表数据量相差悬殊的情况提供了一种新的改写思路。
 
 原SQL：
-
+```sql
 merge into t_customer c
 using (select a.cstno, a.amount
          from t_trade a,
@@ -1162,8 +1177,10 @@ using (select a.cstno, a.amount
 on (c.cstno = m.cstno)
 when matched then
   update set c.amount = m.amount;
+```
 执行计划：
 
+![Alt text](image-21.png)
  
 这个SQL的业务逻辑是，将用户交易明细表（trade）的最近的一笔消费额更新到用户信息表（t_customer）的消费字段。
 
@@ -1171,10 +1188,10 @@ when matched then
 
 原SQL中红色部分是一种较为常见的写法，用到了标量子查询，group by后取其他字段信息，这个写法的弊端就是需要进行多次表扫描，且聚合操作比较耗费资源。
 
-且这段sql还有一个隐患，就是当用户交易明细表trade的某个cstno对应的最大trade_date有重复值，那么这个SQL就会报错ORA-30926: unable to get a stable set of rows in the source tables。
+且这段sql还有一个隐患，就是当用户交易明细表trade的某个cstno对应的最大trade_date有重复值，那么这个SQL就会报错`ORA-30926: unable to get a stable set of rows in the source tables`。
 
 改写方法1：
-
+```sql
 merge into t_customer c
 using (select a.cstno, a.amount
          from (select trade_date,
@@ -1186,10 +1203,11 @@ using (select a.cstno, a.amount
 on (c.cstno = m.cstno)
 when matched then
   update set c.amount = m.amount;
+```
 使用分析函数改写，效率会比原SQL提高很多，而且不会报ORA-30926错误。
 
 改写方法2：
-
+```sql
 declare
   vamount number;
 begin
@@ -1205,20 +1223,21 @@ begin
   end loop commit;
 end;
 /
+```
 根据执行计划得知，用户信息表t_customer的记录数比较少，只有一千条，而用户交易明细表t_trade的记录有1000万条，比例为1:10000。在这种特殊两表数据相差较大的特殊情况下，PSQL的写法确实比分析函数的写法要高效，这个改写方法非常巧妙，思路独特，值得借鉴。
 
 改写方法1和方法2的对比：
 
-1）plsql的改写方式，适合在t_customer表比较小，而且t_customer 和 t_trade两表的记录数比例比较大的情况下，性能才会比分析函数的改写高一些。在本例中，如果t_customer表的记录数是10万，那么分析函数的写法反而要比plsql的写法快上几十到上百倍。
+1. plsql的改写方式，适合在t_customer表比较小，而且t_customer 和 t_trade两表的记录数比例比较大的情况下，性能才会比分析函数的改写高一些。在本例中，如果t_customer表的记录数是10万，那么分析函数的写法反而要比plsql的写法快上几十到上百倍。
 
-2）如果在程序代码中，一段sql要改成plsql，改动还是有点麻烦。sql的改写相对简单些。
+2. 如果在程序代码中，一段sql要改成plsql，改动还是有点麻烦。sql的改写相对简单些。
 
-3）plsql这种改写的前提是必须存在t_trade表cstno + trade_date两字段的联合索引，而分析函数的改写就不需要任何索引的支持。
+3. plsql这种改写的前提是必须存在t_trade表cstno + trade_date两字段的联合索引，而分析函数的改写就不需要任何索引的支持。
 
-4）对于t_trade这种千万记录级别的表，使用分析函数的写法可以通过开启并行来提速。plsql的改写，如果要提高效率，需要先将t_customer表按cstno分组，用多个session并发执行。
+4. 对于t_trade这种千万记录级别的表，使用分析函数的写法可以通过开启并行来提速。plsql的改写，如果要提高效率，需要先将t_customer表按cstno分组，用多个session并发执行。
 
-方法2的改写：
-
+针对方法2的改写：
+```sql
 merge into t_customer c
 using (select tc.cstno,
               (select amount from t_trade td1 
@@ -1228,14 +1247,16 @@ using (select tc.cstno,
          from t_customer tc) m
 on (c.cstno = m.cstno)
 when matched then update set c.amount = m.amount;
+```
 执行计划：
 
+![Alt text](image-22.png)
  
 逻辑看起来比较复杂难懂，一般不会用到这样的改写，了解一下就好。
 
 这种写法需要的条件和PLSQL写法一致，需要t_trade表存在cstno+trade_date联合索引（IDX_T_TRADE），而且T_customer 表的数据量远低于T_trade。根据执行计划，这个sql的执行效率应该比plsql写法的效率不相上下。
 
-总结：
+**总结：**
 
 SQL优化，除了要避免低效的SQL写法，主要还是要看表的数据量与数据分布情况，plsql的改写方法，在少数比较特殊的情况下会体现出较高的效率，在某些数据分布的情况下，效率可能还不如原SQL。但是，优化思路非常值得借鉴。而分析函数的改写方式，则不论数据如何分布，都会比原SQL要高效，通用性更强。
 
@@ -1249,26 +1270,38 @@ SQL优化，除了要避免低效的SQL写法，主要还是要看表的数据�
 
 因此，当我们进行SQL改写优化的时候，应该记住：优化无定式，优化器是死的，人脑是活的，只有掌握了原理，才能让SQL执行效率越来越高。
 
-附件：demo-113.sql
-## 2.14 Enq: ss - contention性能问题处理
-某个业务系统突然变得十分缓慢，查看AWR显示的主要等待事件为Enq: ss – contention 
+附件：[demo-213.sql](./files/demo-213.sql)
+
+## 2.14 等待事件 Enq: ss - contention 性能问题处理
+
+某个业务系统突然变得十分缓慢，查看AWR显示的主要等待事件为Enq: ss – contention：
+
+![Alt text](image-23.png)
+
 SS指的是sort segments排序段，相关描述如下：
 
+![Alt text](image-24.png)
  
 大概意思是，SS该锁是为了确保在并行DML操作期间创建的排序段不会过早清理。也就是数据库中的临时表空间不够用了，在等待数据库分配新的Sort Segment。
 
-根据Oracle 文档对该事件的描述：
+根据Oracle 文档对该事件的描述：  
+*When SMON is cleaning up very large dead transactions, it may not service other work like cleaning up temporary space, handling sort-segment requests or performing instance recovery.*
 
-When SMON is cleaning up very large dead transactions, it may not service other work like cleaning up temporary space, handling sort-segment requests or performing instance recovery.
 现场检查数据库，果然存在一个大的update事务在回滚，而且预计还有很长一段时间才能回滚完成。这种情况下，如何恢复当前业务的执行效率呢？
-方案1：
 
-1）加速回滚，事务回滚完SMON就能正常管理sort segment了；
-2）手工清理临时表空间：alter session set events 'immediate trace name drop_segments level ;
-这两种方法是一个正常DBA的思维，非常正确。不过下次再遇到大事务回滚，还是会出现相同问题。所以尝试分析受影响的业务SQL，看看是否可以优化解决问题。
+**方案1：**
+1. 加速回滚，事务回滚完SMON就能正常管理sort segment了；
+2. 手工清理临时表空间：
+   ```sql
+   alter session set events 'immediate trace name drop_segments level;
+   ```
 
-原SQL：
+这两种方法是一个正常DBA的思维，非常正确。
 
+不过下次再遇到大事务回滚，还是会出现相同问题。所以尝试分析受影响的业务SQL，看看是否可以优化解决问题。
+
+**原SQL：**
+```sql
 WITH TMP_RESULT AS
  (SELECT A.ACCT_ID,
          A.PRD_INST_ID,
@@ -1309,8 +1342,11 @@ SELECT C.ACCT_ID,
        C.CHARGE
   FROM TMP_RESULT C
  WHERE C.OFR_ID = 0;
+```
+
 执行计划：
 
+![Alt text](image-25.png)
  
 这种使用with的CTE（Common Table Expression）写法的SQL，在with对象被引用两次以上时，会先对命名对象生成一张临时表（如果包含字段包含lob字段则不会）写到临时表空间，这个过程叫materialize，后续使用该对象的时候直接从临时表中读取数据，不需要重复执行这段SQL。
 
@@ -1318,16 +1354,16 @@ SELECT C.ACCT_ID,
 
 这个SQ会使用CTE，是因为SQL用到的一个view：V_DAT_M_21，这个view是从db link获取数据，这个步骤消耗的时间最长，使用CTE的materialize就是为了避免这个view的两次调用。本来一个为了提高效率的优化操作，遇到了大事务回滚反而性能下降了很多。
 
-方案2：
+**方案2：**
 
-分析到这里，我们又多了一个解决方案：用/*+inline*/ hint（放到CTE中的select后），告诉优化器不要做materialize，这样就避免了临时表的生成和临时表空间的使用，执行时间可能由1秒提高到2秒，但是也远比20秒要好很多。这个操作可以通过sql profile实现，不需要修改SQL代码。
+分析到这里，我们又多了一个解决方案：用 /*+inline*/ hint（放到CTE中的select后），告诉优化器不要做materialize，这样就避免了临时表的生成和临时表空间的使用，执行时间可能由1秒提高到2秒，但是也远比20秒要好很多。这个操作可以通过sql profile实现，不需要修改SQL代码。
 
 方案3：
 
 根据原SQL的逻辑，发现这个SQL也是可以通过外连接的方式实现改写，也可以达成只执行一次CTE，这样优化器不要做materialize，这样就避免了临时表的生成和临时表空间的使用。
 
 改写后SQL：
-
+```sql
 WITH TMP_RESULT AS
  (SELECT A.ACCT_ID,
          A.PRD_INST_ID,
@@ -1355,20 +1391,27 @@ SELECT distinct C.ACCT_ID,
   FROM TMP_RESULT C, TB_PRD_OFR E
  WHERE C.OFR_ID = E.OFR_ID(+)
    and (c.ofr_id = 0 or e.ofr_id is not null);
-经过改写后，之前的几个方法就显得多余了。这个SQL既提升了执行效率，又完全不使用temp表空间，再也不需要担心大事务回滚的影响了。Jilu
-心得体会：
+```
+经过改写后，之前的几个方法就显得多余了。这个SQL既提升了执行效率，又完全不使用temp表空间，再也不需要担心大事务回滚的影响了。
+
+**心得体会：**
 
 在执行并行DML操作时，Oracle数据库会创建多个Sort Segments以存储每个并行进程的结果，这些结果集需要按照特定的行序进行排序和合并，以得到最终的结果。并行DML操作允许数据库同时在多个CPU上执行相同的操作，以提高处理速度。
 
+![Alt text](image-26.png)
  
 在本案例中，由于锁Sort Segment占用了大量的临时表空间，导致业务SQL需要等待分配新的Sort Segment（SQL的CTE和union都会用到临时表空间）。因此，本案例的核心就是为了解决临时表空间占用的问题，要么释放，要么减少使用频率。
 
 笔者给出了三种解决方案，第一种是释放，后面两种是强制不使用临时表空间。第一个方法治标不治本，可能还会频繁发生。第二个方法相比第三个方法比较简单，但是性能没有达到最优。第三个方法性能好，但是改写需要的比较清晰的思路，对我来说可能有点困难。在大概看了改写思路，自己尝试改写还是没能成功，最后还是通过画图才梳理清楚。
 
- 
-## 2.15 重新分析并修正一个update SQL的优化方法
-原sql：
+![Alt text](image-27.png)
 
+
+## 2.15 update SQL的优化方法
+
+**原sql：**
+
+```sql
 UPDATE CSCU_SUBS_SPSERVICE_LIST
    SET EXPIRETIME = :B1
  WHERE SUBSID = :B6
@@ -1378,13 +1421,18 @@ UPDATE CSCU_SUBS_SPSERVICE_LIST
    AND (EXPIRETIME = :B2 OR
        (EXPIRETIME IS NULL OR
        EXPIRETIME >= TO_DATE('20370101, yvyymmdd')) AND STATUS = 1);
- 
+```
+
+执行计划：
+
+![Alt text](image-28.png)
+
 原sql存在的问题是，update更新少量的记录，但是用时久，索引回表次数多。根据执行计划，可以推断出索引由4个字段组成，包含了EXPIRETIME，但是由于OR的写法限制了只能使用前三个字段，EXPIRETIME只能在回表时做filter。
 
 因此，优化的方向就是尽可能让EXPIRETIME也走索引做access，使用4个字段更为高效的索引。
 
 思路是，根据OR，将SQL拆分为3个update语句。
-
+```sql
 --UPDATE1
 UPDATE CSCU_SUBS_SPSERVICE_LIST
    SET EXPIRETIME = :B1
@@ -1416,13 +1464,16 @@ UPDATE CSCU_SUBS_SPSERVICE_LIST
    AND STATUS = 1
    AND LNNVL(EXPIRETIME IS NULL)
    AND LNNVL(EXPIRETIME = :B2);
+```
+
 拆分完了，性能也提升了，但是等价性如何？
+
 可能存在的问题是，第一步的update完成后的记录，EXPIRETIME更新后的值可能又满足后面的update条件，可能又一次在第二步被update。如果:B1是常量，重复update倒是没事，如果是变量，或者sysdate这种，那么三次update执行的结果，可能就和原来的结果不一致了。
 
 改写前后结果不一致，这是不被允许的。需要重新改写，但是思路还是原来的思路，拆分update。在SQL改写中，OR逻辑操作我们常用union all来替代，逻辑上不会发生变化。
 
-改写1：
-
+**改写1：**
+```sql
 merge into CSCU_SUBS_SPSERVICE_LIST a using 
 (SELECT b1.EXPIRETIME, rowid rid
    FROM CSCU_SUBS_SPSERVICE_LIST b1
@@ -1455,10 +1506,12 @@ merge into CSCU_SUBS_SPSERVICE_LIST a using
 on (a.rowid = b.rid)
 when matched then
   update a.EXPIRETIME = b.EXPIRETIME;
+```
+
 如果有主键的情况下，可以用主键替代rowid。
 
-改写2：
-
+**改写2：**
+```sql
 MERGE INTO CSCU_SUBS_SPSERVICE_LIST A
 USING (SELECT /*+NO_MERGE OR_EXPAND*/
         B1.EXPIRETIME, ROWID RID
@@ -1473,18 +1526,22 @@ USING (SELECT /*+NO_MERGE OR_EXPAND*/
 ON (A.ROWID = B.RID)
 WHEN MATCHED THEN
   UPDATE A.EXPIRETIME = B.EXPIRETIME;
+```
+
 12c及更高版本中，"OR-EXPAND"是一种查询优化操作，用于处理包含OR条件的查询。当查询中存在OR条件时，Oracle可以使用OR-EXPAND操作将其转换为UNION ALL操作，以便更好地利用索引和并行执行计划。利用Oracle自带的hint对OR进行转换，可以减少代码块，让改写后SQL的谓词条件保持和原SQL一致。
 
 **学习心得：**
 
 本章收获很丰富，通过看执行计划可以判断索引的情况。组合索引字段做谓词条件时，OR操作会导致索引不生效，因此可以改为用union all集合操作，在12c及更高版本中，还可以使用/*+OR_EXPAND*/ hint替代union all集合操作。
 
-附件：demo-1.15.sql
+附件：[demo-215.sql](./files/demo-215.sql)
+
 ## 2.16 like等价改写substr优化
+
 一个CPU TOP 1 SQL,占了总CPU资源将近10%。原SQL稍复杂，有UNION ALL，还有row_number分析函数，这里做了简化，只抽取了其中核心部分。
 
 Sql:
-
+```sql
 select *
   from (SELECT item_ver
           FROM items T
@@ -1492,16 +1549,17 @@ select *
            AND :B1 LIKE SUBSTR(T.FIRST_SN, 1, 10) || '%'
          order by T.UPDATED_DATE)
  where rownum <= 1;
-已知条件：
+```
 
-items表有500万左右的记录，12.5万 blocks，当前使用的是FIRST_SN + LAST_SN 两字段联合索引。平均buffer gets 2800，执行时间40毫秒（开发人员认为40毫秒完全可以接受，但是由于执行非常频繁,系统资源接受不了）。满足 :B1 BETWEEN T.FIRST_SN AND T.LAST_SN 谓词条件的记录数较多，满足 :B1 LIKE SUBSTR (T.FIRST_SN, 1, 10) || '%' 谓词条件的记录数也比较多，但是两个条件都满足的记录数相对较少。
+已知条件：  
+items表有500万左右的记录，12.5万 blocks，当前使用的是FIRST_SN和LAST_SN两字段联合索引。平均buffer gets为2800，执行时间40毫秒（开发人员认为40毫秒完全可以接受，但是由于执行非常频繁，系统资源接受不了）。  
+满足 :B1 BETWEEN T.FIRST_SN AND T.LAST_SN 谓词条件的记录数较多，满足 :B1 LIKE SUBSTR (T.FIRST_SN, 1, 10) || '%' 谓词条件的记录数也比较多，但是两个条件都满足的记录数相对较少。
 
-分析：
-
+分析：  
 这是一个区间检索的SQL，但不是严格的区间检索，因为有大量的重复区间，还要把满足条件的全部记录排序后再取日期最早的一条（如果是严格的区间检索，一个给定的B1值，最多只会对应一个区间，区间不重复,以前的公众号文章有介绍,优化后效果会非常好）。所以用严格区间检索的优化方法在这里就不行了，但是如果只是使用index_desc的hint让索引降序扫描，应该还是会有一些提升。
 
-优化1，改写SQL，将原SQL红色部分替换为以下红色部分：
-
+**优化1，改写SQL：**
+```sql
 select *
   from (SELECT item_ver
           FROM items T
@@ -1509,9 +1567,11 @@ select *
            AND SUBSTR(:B1,1,10) = SUBSTR(T.FIRST_SN, 1, 10)
          order by T.UPDATED_DATE)
  where rownum <= 1;
-优化2，创建索引：
+```
 
-为了让索引发挥最大作用，让last_sn字段也起到索引的作用，创建SUBSTR(T.FIRST_SN,1,10),LAST_SN,FIRST_SN,UPDATED_DATE 4字段联合索引。
+**优化2，创建索引：**
+
+为了让索引发挥最大作用，让last_sn字段也起到索引的作用，创建`SUBSTR(T.FIRST_SN,1,10),LAST_SN,FIRST_SN,UPDATED_DATE` 4字段联合索引。
 
 优化后，随机选择一个绑定变量在测试环境测试，原来将近2000 buffer gets，优化后变成11个buffer。
 
@@ -1519,11 +1579,525 @@ select *
 
 学习了本章案例，长了很多见识。一是知道了like的原来也可以改写。二是又对组合索引有了新的理解，这里建了4字段的组合索引，我认为索引顺序是有讲究的。等值连接条件的字段作为引导列，由于用到了函数，所以把函数也一起作为引导列。Order by排序字段放在最后，可以有效减少回表。
 
-附件：demo-116.sql
-## 2.17 让SQL性能提升几百倍
+附件：[demo-216.sql](./files/demo-216.sql)
+
+## 2.17 1.17 学会改写SQL，让性能起飞
+
 完成相同业务逻辑的SQL,写法不同,执行效率可能会有几百上千倍的差距,今天我们通过几个案例来说明一下:
 
-## 2.18 
+**case1：原sql代码如下(执行时间1.2分钟)**
+
+```sql
+with holder_clear_temp as
+ (select distinct t.principal_holder_account
+    from ch_member.holder_account s, ch_member.clear_agency_relation t
+   where s.holder_account = t.principal_holder_account
+     and s.holder_account_status = '1'
+     and t.agency_status = '1'
+     and t.agency_type in ('1', '2')
+     and t.agency_holder_account = :1
+     and t.principal_holder_account != :2),
+holder_settle_temp as
+ (select t.principal_holder_account, t.product_category
+    from ch_member.holder_account s, ch_member.settle_agency_rel t
+   where s.holder_account = t.principal_holder_account
+     and s.holder_account_status = '1'
+     and t.agency_status = '1'
+     and t.agency_type in ('1', '2')
+     and t.agency_holder_account = :3
+     and t.principal_holder_account != :4
+     and not exists
+   (select 1
+            from holder_clear_temp c
+           where c.principal_holder_account = t.principal_holder_account)),
+temp as
+ (select jour.BALANCE_CHG_SN
+    from ch_his.HIS_ACCOUNT_CHG_BALANCE_JOUR jour
+   inner join ch_stock.product_info info
+      on (info.product_code = jour.product_code or
+         (info.pub_product_code = jour.product_code and
+         info.has_distribution_flag = '1'))
+   where 1 = 1
+     and (exists
+          (select 1
+             from holder_clear_temp c
+            where jour.holder_account = c.principal_holder_account) or exists
+          (select 1
+             from holder_settle_temp s
+            where jour.holder_account = s.principal_holder_account
+              and info.product_Category = s.product_category))
+     and jour.init_date >= :5
+     and jour.init_date <= :6
+
+  union all
+
+  select jour.BALANCE_CHG_SN
+    from ch_stock.ACCOUNT_CHG_BALANCE_JOUR jour
+   inner join ch_stock.product_info info
+      on (info.product_code = jour.product_code or
+         (info.pub_product_code = jour.product_code and
+         info.has_distribution_flag = '1'))
+   where 1 = 1
+     and (exists
+          (select 1
+             from holder_clear_temp c
+            where jour.holder_account = c.principal_holder_account) or exists
+          (select 1
+             from holder_settle_temp s
+            where jour.holder_account = s.principal_holder_account
+              and info.product_Category = s.product_category))
+     and jour.init_date >= :7
+     and jour.init_date <= :8)
+
+select count(1) from temp;
+```
+
+这个sql相对复杂一点，我们通过sql monitor显示的执行计划可以明显的看出瓶颈所在。因为谓词条件使用了or 连接两个exists子查询，所以只能使用filter操作，而主查询返回的记录数又比较多，就导致sql执行时间比较长。根据sql写法和执行计划反馈的信息，我们就可以通过改写来优化这个SQL。sql monitor显示(部分)：
+
+![Alt text](image-29.png)
+
+有点糊，看不出来任何东西，就当看过了，继续往下。
+
+**case1改写后SQL：**
+
+```sql
+with holder_clear_temp as
+ (select distinct t.principal_holder_account
+    from ch_member.holder_account s, ch_member.clear_agency_relation t
+   where s.holder_account = t.principal_holder_account
+     and s.holder_account_status = '1'
+     and t.agency_status = '1'
+     and t.agency_type in ('1', '2')
+     and t.agency_holder_account = '2110348'
+     and t.principal_holder_account != '2110348'),
+holder_settle_temp as
+ (select t.principal_holder_account, t.product_category
+    from ch_member.holder_account s, ch_member.settle_agency_rel t
+   where s.holder_account = t.principal_holder_account
+     and s.holder_account_status = '1'
+     and t.agency_status = '1'
+     and t.agency_type in ('1', '2')
+     and t.agency_holder_account = '2110348'
+     and t.principal_holder_account != '2110348'
+     and not exists
+   (select 1
+            from holder_clear_temp c
+           where c.principal_holder_account = t.principal_holder_account)),
+exists_temp as
+ (select principal_holder_account, 'xx' as product_category
+    from holder_clear_temp
+  union
+  select principal_holder_account, product_category
+    from holder_settle_temp),
+temp as
+ (select jour.BALANCE_CHG_SN
+    from ch_his.HIS_ACCOUNT_CHG_BALANCE_JOUR jour,
+         ch_stock.product_info               info,
+         exists_temp                         uuu
+   where info.product_code = jour.product_code
+     and jour.holder_account = uuu.principal_holder_account
+     and (uuu.product_category = 'xx' or
+         info.product_Category = uuu.product_category)
+     and jour.init_date >= 20190205
+     and jour.init_date <= 20190505
+  union all
+  select jour.BALANCE_CHG_SN
+    from ch_his.HIS_ACCOUNT_CHG_BALANCE_JOUR jour,
+         ch_stock.product_info               info,
+         exists_temp                         uuu
+   where (info.pub_product_code = jour.product_code and
+         info.has_distribution_flag = '1')
+     and jour.holder_account = uuu.principal_holder_account
+     and (uuu.product_category = 'xx' or
+         info.product_Category = uuu.product_category)
+     and jour.init_date >= 20190205
+     and jour.init_date <= 20190505
+     and lnnvl(info.product_code = jour.product_code)
+
+  union all
+
+  select jour.BALANCE_CHG_SN
+    from ch_stock.ACCOUNT_CHG_BALANCE_JOUR jour
+   inner join ch_stock.product_info info
+      on (info.product_code = jour.product_code or
+         (info.pub_product_code = jour.product_code and
+         info.has_distribution_flag = '1'))
+   where 1 = 1
+     and (exists
+          (select 1
+             from holder_clear_temp c
+            where jour.holder_account = c.principal_holder_account) or exists
+          (select 1
+             from holder_settle_temp s
+            where jour.holder_account = s.principal_holder_account
+              and info.product_Category = s.product_category))
+     and jour.init_date >= 20190205
+     and jour.init_date <= 20190505)
+
+select count(1) from temp;
+```
+
+经过改写后，原来执行1.2分钟的SQL,现场测试只需要耗时0.6秒（这个测试只改了耗时较长union all的上半部分，如果下半部分也做相同改写，预计最终执行时间不到0.3秒,性能提升达200多倍）。
+
+改写说明:
+
+原sql用or 连接的两个exists，存在相同的关联条件,我们通过一个union(注意不是union all)把它合并在一起,通过CTE(with as)定义为exists_temp，然后就可以与主查询的两个表做关联，而不是做filter。因为主查询两个表的关联关系也存在一个or，优化器必然会使用concat，那样就会拆分成4段做union all。我只希望主查询做concat，就人工做了concat，将主查询拆分成了union all。
+
+**Case2原SQL：**
+```sql
+SELECT A.FLOW_INID,
+       A.CURR_STEP,
+       A.FLOW_NAME,
+       A.FINS_NAME,
+       TO_CHAR(A.INST_CRDA, 'YYYY-MM-DD HH24:MI:SS') INST_CRDA,
+       'manual_rel' RELA_TYPE
+  FROM FLOW_INST A
+ WHERE EXISTS (SELECT 1
+          FROM FLOW_RELATE_INFO B
+         WHERE A.FLOW_INID = B.RELATE_FLOW_INID
+           AND B.FLOW_INID = :1)
+    OR EXISTS (SELECT 1
+          FROM FLOW_RELATE_INFO B
+         WHERE A.FLOW_INID = B.FLOW_INID
+           AND B.RELATE_FLOW_INID = :2)
+UNION ALL
+SELECT S.FLOW_INID,
+       S.CURR_STEP,
+       S.FLOW_NAME,
+       S.FINS_NAME,
+       TO_CHAR(S.INST_CRDA, 'YYYY-MM-DD HH24:MI:SS') INST_CRDA,
+       'auto_rel' RELA_TYPE
+  FROM FLOW_INST S,
+       (SELECT FI.FLOW_INID, FI.PARA_INID
+          FROM FLOW_INST FI
+         WHERE FI.FLOW_INID = :3) F
+ WHERE ((F.FLOW_INID = S.PARA_INID AND S.IF_SUB = 1) OR
+       F.PARA_INID = S.FLOW_INID)
+   AND S.DEL_FLAG = 0;
+```
+
+ 
+这是一个OA系统的业务SQL,执行时间接近2秒. FLOW_RELATE_INFO 表只有480条记录,8 blocks。
+
+在不改SQ的情况下，我们可以通过创建FLOW_RELATE_INFO表上(FLOW_INID,RELATE_FLOW_INID)两字段联合索引，将sql执行效率提高到0.37秒（OA系统相对可以接受的一个响应时间）。
+ 
+这个创建小表索引提升效率的方法，也是对那些小表不需要创建索引说法的一个反证。
+如果我们改写这个sql，可以不需要创建索引，就能得到一个更好的性能提升，不到0.01秒。
+
+**case2改写后SQL：**
+```sql
+SELECT A.FLOW_INID,
+       A.CURR_STEP,
+       A.FLOW_NAME,
+       A.FINS_NAME,
+       TO_CHAR(A.INST_CRDA, 'YYYY-MM-DD HH24:MI:SS') INST_CRDA,
+       'manual_rel' RELA_TYPE
+  FROM FLOW_INST A
+ WHERE FLOW_INID in (SELECT RELATE_FLOW_INID
+                       FROM FLOW_RELATE_INFO
+                      WHERE FLOW_INID = '77913'
+                     union
+                     SELECT FLOW_INID
+                       FROM FLOW_RELATE_INFO B
+                      WHERE RELATE_FLOW_INID = '77913')
+UNION ALL
+SELECT S.FLOW_INID,
+       S.CURR_STEP,
+       S.FLOW_NAME,
+       S.FINS_NAME,
+       TO_CHAR(S.INST_CRDA, 'YYYY-MM-DD HH24:MI:SS') INST_CRDA,
+       'auto_rel' RELA_TYPE
+  FROM FLOW_INST S,
+       (SELECT FI.FLOW_INID, FI.PARA_INID
+          FROM FLOW_INST FI
+         WHERE FI.FLOW_INID = '77913') F
+ WHERE ((F.FLOW_INID = S.PARA_INID AND S.IF_SUB = 1) OR
+       F.PARA_INID = S.FLOW_INID)
+   AND S.DEL_FLAG = 0;
+```
+
+ 
+**CASE3原SQL：**
+```sql
+SELECT C.fd_txtname    As "文件名称",
+       a.fd_start_time AS "开始时间",
+       a.fd_end_time   AS "结束时间",
+       c.N             AS "数据量"
+  FROM dapdw.tb_dapetl_log_proc a
+  join dapdw.tb_dapetl_distribute_spool B
+    on a.fd_proc_name = b.fd_id
+  join (SELECT 'YCCTOEAL_INSTALMENT_DYYMMDD.DAT' as fd_txtname,
+               COUNT(1) as N
+          FROM C_EAL_LOANDEPO_HIS
+         where data_Dt = 20190217
+           and source_id = 'YCC01'
+        UNION ALL
+        SELECT 'YCCTOEAL_UNDRAWN_DYYMMDD.DAT', COUNT(1)
+          FROM C_EAL_LOANDEPO_HIS
+         where data_Dt = 20190217
+           and source_id = 'YCC03'
+        UNION ALL
+        SELECT 'YCCTOEAL_FEE_DYYMMDD.DAT', COUNT(1)
+          FROM C_EAL_LOANDEPO_HIS
+         where data_Dt = 20190217
+           and source_id = 'YCC05'
+        UNION ALL
+        SELECT 'NDSTOEAL_FXSPOT_DYYMMDD.DAT', COUNT(1)
+          FROM C_EAL_LOANDEPO_HIS
+         where data_Dt = 20190217
+           and source_id = 'NDS04'
+        UNION ALL
+        SELECT 'YI2TOEAL_LOAN_DYYMMDD.DAT', COUNT(1)
+          FROM C_EAL_LOANDEPO_HIS
+         where data_Dt = 20190217
+           and source_id = 'YI201'
+        UNION ALL
+        SELECT 'YRLTOEAL_CCFD_DYYMMDD.DAT', COUNT(1)
+          FROM C_EAL_LOANDEPO_HIS
+         where data_Dt = 20190217
+           and source_id = 'YRL01') C
+    ON C.fd_txtname = B.fd_txtname
+ WHERE A.FD_DATE = 20190217;
+```
+
+已知信息：  
+union all部分的C_EAL_LOANDEPO_HIS表占用空间几十G，以data_Dt字段按天分区，有50个分区，data_Dt字段是varchar2类型。
+
+分析：  
+data_Dt字段类型不匹配,发生了隐式类型转换，无法实现分区裁剪，类型匹配只需要访问一个分区，但是使用number类型变量要访问全部50个分区。  
+C_EAL_LOANDEPO_HIS表6次重复访问，可以使用case when的写法，只需要访问一次。
+解决了上面两个问题后，改写后的SQL，执行执行效率会是原来的50*6=300倍。只需要将data_Dt=20190217改成data_Dt='20190217'，然后再配合case when，不需要union all，只需要访问C_EAL_LOANDEPO_HIS表一次就能实现原SQL的业务逻辑。
+
+**case3改写后SQL:**
+```sql
+SELECT C.fd_txtname    As "文件名称",
+       a.fd_start_time AS "开始时间",
+       a.fd_end_time   AS "结束时间",
+       c.N             AS "数据量"
+  FROM dapdw.tb_dapetl_log_proc a
+  join dapdw.tb_dapetl_distribute_spool B
+    on a.fd_proc_name = b.fd_id
+  join (SELECT CASE
+                 WHEN source_id = 'YCC01' THEN
+                  'YCCTOEAL_INSTALMENT_DYYMMDD.DAT'
+                 WHEN source_id = 'YCC03' THEN
+                  'YCCTOEAL_UNDRAWN_DYYMMDD.DAT'
+                 WHEN source_id = 'YCC05' THEN
+                  'YCCTOEAL_FEE_DYYMMDD.DAT'
+                 WHEN source_id = 'NDS04' THEN
+                  'NDSTOEAL_FXSPOT_DYYMMDD.DAT'
+                 WHEN source_id = 'YI201' THEN
+                  'YI2TOEAL_LOAN_DYYMMDD.DAT'
+                 WHEN source_id = 'YRL01' THEN
+                  'YRLTOEAL_CCFD_DYYMMDD.DAT'
+               END AS fd_txtname,
+               COUNT(1) AS N
+          FROM C_EAL_LOANDEPO_HIS
+         WHERE data_Dt = '20190217'
+         GROUP BY source_id) C
+    ON C.fd_txtname = B.fd_txtname
+ WHERE A.FD_DATE = 20190217; 
+```
+
+**学习心得：**
+
+本章节用三个case讲了关于集合操作的改写方法，我深刻认识到了sql写法的重要性，尽管实现相同逻辑，写法不同，可能会有成百上千倍的性能差异。只有熟练掌握分析执行计划的方法，再加上对各种SQL低效写法的了解，才能让SQL得以用最少的资源，最快的速度，完成业务需求。
+
+此外，最重要的一个收获就是，网上很多sql优化专家在对or改写的时候，基本上全部改成了union，这是不等价的改写方法，标准改写请参考一下本例的union all配合lnnvl的写法。Lnnvl是oracle 12c以后推出的函数，其他数据库是否有这个函数就不知道了。
+
+## 2.18 必须改写的情况
+
+本章介绍了一些需要通过改写才能提高性能的SQL写法，改写的原则是：改写的首要任务是等价，其次才是性能的提高，不等价的改写危害更大。
+除了8和9，其他示例SQL使用的表结构都来自类似create table t1 as select * from dba_objects;然后再根据需要做一些简单调整。
+Case1：大结果集标量子查询改外关联
+这个改写网上介绍的挺多，改写的两个关键点就是：
+1、主查询返回结果集比较大，如果主查询返回结果集小，没有改写必要。
+2、改写方式是改成外关联（a left join b on a.id=b.id或 a.id=b.id(+))，而不是不等价的内连接（inner join 或 a.id=b.id)。
+原SQL：
+select owner,
+       object_id,
+       nvl((select object_name from t2 b where a.object_id = b.object_id),
+           'unknown') as t2_name
+  from t1 a
+ where owner not in ('SYS');
+改写后SQL：
+select a.owner, a.object_id, nvl(b.object_name, 'unknown') as t2_name
+  from t1 a, t2 b
+ where a.owner not in ('SYS')
+   and a.object_id = b.object_id(+);
+Case2：not in建议改成not exists（而in和exists基本没差别，不需要纠结）
+--not in：
+select object_id, object_name
+  from t2
+ where object_id not in (select object_id from t1) ；
+--not exists：
+select object_id, object_name
+  from t2
+ where not exists
+ (select object_id from t1 where t1.object_id = t2.object_id);
+说明：
+1、如果主查询和子查询的关联字段（上面对应object_id)定义都是not null时，not in和not exists是等价的，没有区别；
+2、如果主查询或子查询的关联字段可为null时，返回结果集可能不同：
+not in：如果子查询结果集有null值（object_id为null），那整个查询结果就没有返回，这个大部分情况不是想要的结果；如果子查询结果集没有null值，主查询的null值记录也不会返回；
+not exists：子查询有null值不会返回空结果集；主查询为null值的记录也会返回。
+3、两者的性能差别主要体现在子查询的关联字段定义为null时：
+not in：子查询一定要全表扫描；
+not exists：子查询不一定要全表扫描，主表小，子查询表大时效率高（nested loop）；
+结论：建议使用not exists，不用not in。如果要改写，注意等价性，一般来说not exists返回的是需要的结果。
+Case3：两种OR的改写
+1、两个字段谓词条件的or
+select object_name, object_type, object_id
+  from t1
+ where object_name = 'T1'
+    or object_id <= 10;
+上面这种情况，如果两个字段的选择性可以，而且都存在索引，不论是oracle还是mysql，优化器都是会自动改写的，上面的sql如果要手工改写，可以这样改：
+select object_name, object_type, object_id
+  from t1
+ where object_name = 'T1'
+union all
+select object_name, object_type, object_id
+  from t1
+ where object_id <= 10
+   and lnnvl(object_name = 'T1');
+注意：等价改写是用union all，而不是网上普遍流传的union，既不等价，效率又低；需要使用union all，但不要忘了lnnvl的补充条件，而且注意，不要写成object_name<>'T1'，两种又是不同的。lnnvl 函数用于在条件 object_name = 'T1' 上使用逻辑 NOT NULL，这意味着它将选择所有 object_name 不是 'T1' 或者为 NULL 的行，因为 lnnvl(NULL) 返回 TRUE。
+1、or exists
+select object_name, object_type, object_id
+  from t1
+ where object_name = 'T1'
+    or exists (select 1
+          from t2
+         where t1.object_id = t2.object_id
+           and t2.object_id <= 10);
+这种情况优化器就不会自动帮你改写了（oracle 12.2版本及以上可以自动使用or_expand做查询转换)，还是按照上面的思路：
+select object_name, object_type, object_id
+  from t1
+ where object_name = 'T1'
+union all
+select object_name, object_type, object_id
+  from t1
+ where exists (select 1
+          from t2
+         where t1.object_id = t2.object_id
+           and t2.object_id <= 10)
+   and lnnvl(object_name = 'T1');
+case4：取分组后最大（最小）值的那一条记录
+下面这个SQL是取每个owner最后创建的对象信息，不但低效，而且结果集也不是想要的。先group by，再自关联：
+select t1.owner, object_type, object_name, object_id, created
+  from t1,
+       (select owner, max(created) as max_createdfrom t1 group by owner) t2
+ where t1.owner = t2.owner
+   and t1.created = t2.max_created;
+如果owner对应最大的created有重复，这样关联后还会返回重复记录。如果要得到不重复的结果集，这种写法需要把created需要换成object_id：
+select t1.owner, object_type, object_name, object_id, created
+  from t1,
+       (select owner, max(object_id) as max_id from t1 group by owner) t2
+ where t1.owner = t2.owner
+   and t1.object_id = t2.max_id;
+高效而且可以使用created的写法，需要使用row_number分析函数：
+select *
+  from (select owner,
+               object_type,
+               object_name,
+               object_id,
+               created,
+               row_number() over(partition by owner order by created desc) as RN
+          from t1)
+ where RN = 1;
+这里如果不用row_number()，而是使用max(created)，也会得到和前面的max(created)一样的有重复记录的结果。
+Case5：让like '%ABCDE' (百分号在前)的写法使用索引
+这个比较简单，先创建reverse 函数索引，再使用reverse函数改写sql。
+原SQL无法使用索引：
+select owner, object_name from t1 where object_name like '%ABCDE';
+改写的同时，还需要创建reverse函数索引：
+select owner, object_name
+  from t1
+ where reverse(object_name) like reverse('%ABCDE');
+Case6：让like '%ABCDE%' 这样的SQL效率得到一些提升
+前提：表字段数较多（两三个字段的表就没必要折腾了）；返回记录数少。
+create index idx_t1_object_name on t1(object_name);
+原SQL无法使用object_name字段上的索引：
+Select object_id, object_type, object_name
+  from t1
+ where object_name like '%ABCDE%';
+改写后的SQL是这样的：
+Select object_id, object_type, object_name
+  from t1
+ Where object_name in
+       (select object_name from t1 where object_name like '%ABCDE%');
+原理就是利用索引比表小，用索引全扫描（index fast full scan)来代替表的全扫描。
+Case7：让<> != not in (1,2) 这样的SQL也能用上索引
+前提是：这些过滤条件应用后，确实能返回较少的记录
+当前存在这样的索引：create index idx_t1_status on t1(status);
+这里假设t1表的status字段大部分记录都是'VALID',还有其他10几个唯一值，占比相对较少。
+原sql，无法使用索引：
+select owner, object_name, status from t1 where status <> 'VALID';
+优化方法，需要先创建函数索引：
+create index idx_t1_status_fun on t1(decode(status,'VALID',null,null,'NULL','OTHER'));
+注： 这个decode函数写法可以自由发挥
+再改写SQL：
+select owner, object_name, status
+  from t1
+ where decode(status, 'VALID', null, null, 'NULL', 'OTHER') = 'OTHER';
+Case8：严格区间检索SQL的最佳写法
+严格区间的定义：区间没有重叠，最多只返回一条记录。
+原SQL，根据ip地址（已经转换成number数值），找到对应的国家代码：
+Select country_code
+  From COUNTRY_IP_RANGE IP
+ WHERE IP.Start_IP1 <= :number_ip
+   AND IP.End_IP1 >= :number_ip;
+普通改写：
+select country_code
+  from COUNTRY_IP_RANGE IP
+ WHERE IP.Start_IP1 <= :number_ip
+   AND IP.End_IP1 >= :number_ip
+   And rownum = 1;
+此时需要创建end_ip1,start_ip1两个字段联合索引。如果一个绑定变量的值匹配不到任何区间，上面这个写法消耗还是比较高，绑定变量值越小，匹配不到区间的消耗越高。
+最佳处理：
+select case
+         when start_ip1 <= :number_ip then
+          COUNTRY_CODE
+         else
+          'no_match'
+       end
+  from (SELECT COUNTRY_CODE, start_ip1, end_ip1
+          FROM COUNTRY_IP_RANGE
+         WHERE end_ip1 >= :number_ip
+         order by end_ip1)
+ where ROWNUM = 1;
+这种写法，只需要end_ip1一个字段上的索引，不管能否匹配到区间，都是最小消耗。
+返回结果说明：匹配到区间，返回对应的COUNTRY_CODE；超出区间最大值，没有返回；其他匹配不到区间情况（包括低于区间最小值），返回no_match。
+如果需要超出区间最大值也返回no_match时，可以再套一层：
+即：select nvl(上面 sql,'no_match') from dual;
+Case9：nvl(expire_date,sysdate)
+原SQL：
+select count(*) from t1 where nvl(expire_date, sysdate) >= sysdate;
+这种SQL没有办法创建函数索引(如果nvl内不是sysdate，而是一个具体的日期，这种情况可以创建nvl函数索引）。
+改写：
+select count(*) from t1 where expire_date >= sysdate or expire_date is null;
+需要创建(expire_date,0)联合索引。
+Case10：分页查询rownum的位置
+11g及以下版本，一般使用rownum做分页查询（12c 有了比较简洁的offset fetch语句）。
+低效写法：
+SELECT *
+  FROM (SELECT A.*, ROWNUM RN
+          FROM (SELECT owner, created, object_id, object_type
+                  FROM t1
+                 where owner = 'SYS'
+                 order by object_id desc) A)
+ WHERE RN > 10
+   and RN <= 20;
+高效写法：
+SELECT *
+  FROM (SELECT A.*, ROWNUM RN
+          FROM (SELECT owner, created, object_id, object_type
+                  FROM t1
+                 where owner = 'SYS'
+                 order by object_id desc) A
+         WHERE ROWNUM <= 20)
+ WHERE RN > 10;
+为了达到最佳性能，上面sql需要配合 owner + object_id 两字段联合索引。
+
+
 ## 2.19 
 ## 2.20 
 ## 2.21 
