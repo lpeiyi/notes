@@ -399,10 +399,12 @@ server                       Red Hat Enterprise Linux                    5,210
 repolist: 15,282
 ```
 
-四、下载oracle依赖包
+四、安装oracle依赖包
 
 ```bash
 [root@lu9up01 ~]# yum install -y compat-libcap1
+[root@lu9up01 ~]# yum install -y readline*
+[root@lu9up01 ~]# yum install -y autoconf automake
 [root@lu9up01 ~]# yum install -y compat-libstdc++-33.i686 compat-libstdc++-33.x86_64
 [root@lu9up01 ~]# yum install -y gcc gcc-c++ glibc.i686 glibc.x86_64 glibc-devel glibc-devel.i686 libaio libaio-devel libgcc.i686 libgcc.x86_64 libstdc++.i686 libstdc++.x86_64 libstdc++-devel dejavu-serif-fonts ksh make sysstat numactl numactl-devel motif motif-devel redhat-lsb redhat-lsb-core OpenSSL
 ```

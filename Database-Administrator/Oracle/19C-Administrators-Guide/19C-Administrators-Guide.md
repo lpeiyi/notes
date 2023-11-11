@@ -1,3 +1,7 @@
+**目录**
+
+[toc]
+
 # 4 物理数据库布局和存储管理
 ## 4.1 传统磁盘空间存储
 ## 4.2 自动存储管理
@@ -950,3 +954,24 @@ RMAN>
 为访问所有不基于磁盘的存储介质，例如磁带和BD-ROM，RMAN利用第三方介质管理软件在这些离线和近线（near-line）设备之间来回转移备份文件，自动请求加载和卸载适当的介质来支持备份和还原操作。大多数主要介质管理软件和硬件供应商提供直接支持RMAN的设备驱动程序。
 
 ### 14.1.2 RMAN对比传统备份方法
+
+
+
+使用rman命令建立数据库物理全备份：
+
+```sql
+run
+{
+ allocate channel c0 device type disk;
+ allocate channel c1 device type disk;
+ CONFIGURE CONTROLFILE AUTOBACKUP ON;
+ CONFIGURE CONTROLFILE AUTOBACKUP FORMAT FOR DEVICE TYPE DISK TO '/u01/app/oracle/rman/%F';
+ backup  database format '/u01/app/oracle/rman/ora19C_full_db_%d_%T_%u.bak';
+ BACKUP ARCHIVELOG ALL FORMAT '/u01/app/oracle/rman/ora19C_arc_%s_%p_%t.bak';
+}
+```
+
+主从恢复命令：
+```sql
+duplicate target database for standby nofilenamecheck;
+```
