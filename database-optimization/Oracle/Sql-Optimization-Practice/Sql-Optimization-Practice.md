@@ -2823,7 +2823,90 @@ create index idx_t1_owner on t1(owner);
 
 ## 3.6 索引未使用
 
-1. 
+**一、索引状态为UNUSABLE**
+
+```sql
+--普通索引
+select * from dba_indexes where status='UNUSABLE';
+
+--分区索引,分区表global index比较容易因为删除分区导致unusable
+
+select * from dba_ind_partitions where status='UNUSABLE';
+
+--子分区索引
+select * from dba_ind_subpartitions where status='UNUSABLE';
+```
+
+处理办法是重建索引：
+```sql
+alter index idx_name rebuild;
+
+alter index idx_name rebuild partition part_name;
+
+alter index idx_name rebuild subpartition subpart_name;
+```
+
+**二、索引状态为INVISIBLE**
+
+```sql
+select table_owner,table_name,index_name,visibility 
+  from dba_indexes
+ where visibility='INVISIBLE';
+```
+
+处理办法是修改状态：
+```sql
+alter index idx_name visible;
+```
+
+**三、优化器估算使用索引COST高**
+
+1. 字段的NDV（唯一值个数）小，数据平均分布：  
+   这时候不使用索引是正确的。比如性别字段中，只有“男”和“女”两个值，且分布均匀。
+
+2. 字段的NDV（唯一值个数）小，数据分布不均，但是没有直方图信息：  
+   这是不正常的，可以使用hint强制使用索引。比如性别字段中，只有“男”和“女”两个值，分布不均匀。
+
+3. 字段数据分布不均，有直方图信息。但是SQL使用了绑定变量，而且隐含参数_optim_peek_user_binds（绑定变量窥视）被关闭：  
+   建议开启绑定变量窥视，或者使用hint强制使用索引。
+
+4. 模糊查询 like '%xxx%'：
+
+**四、索引列包含NULL**
+
+```sql
+select * from t1 where object_id is null；
+或 
+select * from t1 order by object_id;
+```
+
+处理办法是需要与一个非空内容做组合索引：create index idx_t1_object_id on t1(object_id,0); 原object_id字段上的索引可以删除掉。
+
+字段is null本身设计就有问题，因为null很特殊。可以将null设计为'N'，is null改写为 = 'N'。
+
+**五、字段使用函数或做运算**
+
+1. upper(last_name) = 'SMITH'
+   
+   创建基于函数的索引：create index up_name on employee(upper(last_name));
+
+2. substr(last_name,1,2) = :b1
+   
+   可以改写的情况下改写sql：   
+   last_name like :b1 || '%' and length(:b1) = 2;
+
+   不可以改写sql时，创建基于函数的索引：create index up_name on employee(substr(last_name,1,2))
+
+3. 形如 select * from emp where sal + 100 > 1000;
+   
+   可以改写sql时，改为 sal > 1000 - 100;
+
+   不可以改写时，创建索引 sal + 100
+
+**六、隐式转换**
+
+
+
 
 # 4 执行计划
 # 5 HINT
