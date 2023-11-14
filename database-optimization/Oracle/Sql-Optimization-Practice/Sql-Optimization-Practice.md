@@ -2821,7 +2821,7 @@ create index idx_t1_owner on t1(owner);
 
 索引字段不建议定义为null，索引不保存null，如果要检索null，需要创建带常量的组合索引。
 
-## 3.6 索引未使用
+## 3.6 有索引，但未使用
 
 **一、索引状态为UNUSABLE**
 
@@ -2905,8 +2905,97 @@ select * from t1 order by object_id;
 
 **六、隐式转换**
 
+1. varchar2类型的字段，谓词条件变量类型时number：
+   
+   例如，对于varchar2类型的字段col，当使用col=123的写法时，会自动转换成to_number(col)=123，使得col字段的索引无法使用。
 
+   解决方法是col=to_char(123)，或创建to_number(col)索引。
 
+2. date类型字段，但谓词条件的变量类型为timestamp：
+   
+   ![Alt text](image-30.png)
+
+   hiredate >= systimestamp写法，会将date类型字段hiredate用内部函数INTERNAL_FUNCTION("HIREDATE")转换为timestamp类型，导致索引无法使用。
+
+   解决办法是只能修改代码，将变量类型timestamp转换为date。或者直接改表结构，把字段类型改为timestamp。
+
+**七、绑定变量窥视和自适应游标（ACS）**
+
+需要强调的是，ACS是对直方图强依赖的，也就是说一定要有非常准确的统计信息和柱状图，ACS才能正常运作。
+
+当在分布不均的字段上使用绑定变量，第一次执行sql，硬解析时，变量窥视检测到适合走全表扫描，因此第一次硬解析走了全表扫描。当后续再执行sql，变量窥视检测到适合走索引扫描，会有以下几种不同情况：
+
+为什么后面会和第一次的执行计划不一样，因为第一次硬解析的变量可能基数较大，适合走全表；而后面再次执行时的变量基数少，适合走索引。
+
+11g及以下的版本：
+
+1. 10g及以下的版本，如果硬解析是全表，那么以后会一直全表，直到下次硬解析，再窥视绑定变量，制定新的执行计划（可能会走索引，也有可能再次走全表，取决于变量在表中的基数）。
+
+11g及以上的版本：
+
+1. 如果关闭了自适应游标ACS，那么结果和上述情况1一样。
+
+2. 如果开启了自适应游标ACS，当窥视到变量适合走索引扫描时，会再走一次全表扫描，第二次执行时执行计划才会从新生成，变成走索引扫描的执行计划。
+
+3. 如果想让绑定变量在适合走索引时，第一次就从新生成走索引扫描的执行计划，可以使用hint：bind_aware。
+
+总的来说，10g及以前的版本没有办法应对，建议升级到11g及以上的版本。对于11g及以上的版本，不建议关闭自适应游标ACS，对于绑定变量相关的表，记得收集直方图信息。
+
+**八、直方图的局限性**
+
+1. 11g及以下的版本：
+   
+   直方图只计算字符串的前32位，如果字段存的是URL地址、文件的长绝对路径、系统生成的uuid等字符串，前面32位都相同，即便后面的值各不相同，也会被认为是同一个值，导致优化器不会使用字段上的索引（不过URL地址、文件路径也一般不会作为索引列，但是uuid是十分有可能的）。
+   
+   解决办法，一是用hint强制使用索引。
+
+   或者清除该字段上的直方图信息：
+
+   ```sql
+   --清除当前直方图信息：
+   exec DBMS_STATS.DELETE_COLUMN_STATS('&owner','&tab_name','&col_name',col_stat_type=>'HISTOGRAM');
+
+   --避免下次收集统计信息又恢复：
+   exec dbms_stats.set_table_prefs('&owner','&tab_name','method_opt','for all columns size auto for columns size 1 &col_name');
+   ```
+
+2. 12c及以上的版本：
+   
+   varchar2字符串，直方图信息扩展到可以识别字符串的前64位，如果字段的前面64位都是相同的，一般不会自动收集该字段直方图信息，不影响索引的正常选择使用。如果强制收集了直方图信息，也会导致索引无法被使用。应对方法与11版本相同。
+
+**九、SQL写法导致**
+
+emp表sal字段有索引，下面两个sql做聚合查询，走sal上的索引：
+
+```sql
+select min(sal) from emp;
+select max(sal) from emp;
+```
+
+但是，如果同时查询，那么走的是全表扫描：
+```sql
+select min(sal),max(sal) from emp;
+```
+
+解决办法是，使用标量子查询：
+
+```sql
+select (select min(sal) from emp) sal_min,(select max(sal) from emp) sal_max from dual;
+```
+
+**十、谓词条件使用了or**
+
+**十一、基于函数的索引函数的参数使用了常量，但sql使用绑定变量**
+
+**十二、组合索引，但是先导列未使用**
+
+**十三、谓词条件使用了`not in`、`<>`,`!=`,`not like`等写法**
+
+**十四、使用了sql profile**
+
+**十五、使用了sql plan baseline**
+
+**十六、使用了sql patch**
 
 # 4 执行计划
 # 5 HINT
@@ -2914,3 +3003,10 @@ select * from t1 order by object_id;
 # 7 工具
 # 8 经验总结
 # 9 附件
+
+[sql-monitor.sql](./files/sql-monitor.sql)
+
+[demo-211.sql](./files/demo-211.sql)
+
+[demo-2121.sql](./files/demo-2121.sql)
+
