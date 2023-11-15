@@ -2985,13 +2985,70 @@ select (select min(sal) from emp) sal_min,(select max(sal) from emp) sal_max fro
 
 **十、谓词条件使用了or**
 
+```sql
+select * from t1 where object_id='1' or object_name='A'；
+```
+
+id字段上都有索引，选择性也不错，但是用or写法id字段的索引并未被使用。
+
+解决办法是再独自创建name字段上的索引。
+
 **十一、基于函数的索引函数的参数使用了常量，但sql使用绑定变量**
+
+表上创建了类似如下的索引：
+
+```sql
+create index idx2 on t1(substr(object_name,1,10));
+```
+
+但是sql中函数索引的参数使用了绑定变量：
+
+```sql
+select * from t1 where substr(object_name,1,:b1)=:b2;
+```
+
+这样的写法是无法使用索引的。解决办法是把绑定变量换为函数索引中的常量。在实际应用中，估计也没人会写这样的sql，除非脑子进水了。
 
 **十二、组合索引，但是先导列未使用**
 
+t1表存在两字段复合索引：(**object_id**,object_type)，且object_id唯一值个数多，选择性好。
+
+sql如下：
+```sql
+sql: select * from t1 where object_type='TABLE';
+```
+
+引导列object_id没有用到，这种写法索引不会被使用，如果hint强制使用索引，性能反而更低。
+
+如果引导列额唯一值个数少，选择性差，这种情况是会使用索引跳跃扫描，比全秒扫描稍微好点。
+
+解决办法是单独创建object_type字段上的索引。
+
 **十三、谓词条件使用了`not in`、`<>`,`!=`,`not like`等写法**
 
+sql如下：
+
+```sql
+select * from emp1 where ename not like 'KING%';
+```
+
+类似以上sql，在oracle中是无法使用索引的。解决办法是，创建基于函数的索引，再把不等值连接改为等值连接。
+
+**这么做有个前提，就是以上写法的过滤性好，能过滤掉大部分的记录。**
+
+```sql
+--创建索引
+create index idx_emp1_king on emp1(decode(substr(ename,1,4),'KING','king',null,'null','other'));
+
+--sql改写为
+select * from emp1 where decode(substr(ename,1,4),'KING','king',null,'null','other') = 'other';
+```
+
+这是not like的改写，是这几个中最复杂的。其他改写类似，可以省略substr。
+
 **十四、使用了sql profile**
+
+
 
 **十五、使用了sql plan baseline**
 
