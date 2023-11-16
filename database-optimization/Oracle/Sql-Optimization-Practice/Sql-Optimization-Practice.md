@@ -3049,12 +3049,26 @@ select * from emp1 where decode(substr(ename,1,4),'KING','king',null,'null','oth
 **十四、使用了sql profile**
 
 
-
 **十五、使用了sql plan baseline**
 
 **十六、使用了sql patch**
 
+## 3.7 降序索引
+
+除非必要，不要创建desc降序索引。普通索引可能适用多个SQL，降序索引的适用范围比较窄，而且还有一些bug，为了避免多余的索引和bug，不建议创建全是desc 降序索引。
+
+如果order by的一个或字段都是降序排序，不需要建降序索引，建普通索引就好。
+
+如果order by的多个字段既有升序又有降序，这种情况才需要创建降序索引。
+
+## 3.8 not in和not exists
+
+所以推荐使用not exists，不要使用not in，除非你的业务就需要not in实现的特殊要求。
+
 # 4 执行计划
+
+
+
 # 5 HINT
 # 6 参数
 # 7 工具
