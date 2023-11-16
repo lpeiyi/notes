@@ -742,13 +742,153 @@ Oracle支持许多不同形式的备份和恢复。可在用户级别管理其�
 
 Export和Import本质上是“时间点”备份，因此，如果数据是易变的，则Export和Import不是最健壮的备份和恢复解决方案。
 
-之前的Oracle Database版本包含exp和imp命令，但这些在Oracle Database 12c中不再可用。从Oracle 10g开始，Oracle Data Pump（Oracle数据泵）替代了传统的导入和导出命令，将这些操作的性能提高到新的水平。导出到外部数据源最多可加快两倍，而导入操作最多可以加快45倍，因为Oracle Data Pump导入使用直接路径加载，这一点不同于传统的导入。此外，从源数据库的导出可同时导入目标数据库，而不需要中间的转储文件，从而节省时间和管理工作。使用带有expdb和impdb命令的DBMS_DATAPUMP程序包可以实现Oracle Data Pump，它包括大量其他可管理特性，如细粒度的对象选择。Oracle Data Pump也与Oracle 12c的所有新功能保持同步，如将整个可插入数据库（PDB）从一个容器数据库（CDB）移到另一个。第17章提供关于Oracle数据泵的更多信息。
+之前的Oracle Database版本包含exp和imp命令，但这些在Oracle Database 12c中不再可用。从Oracle 10g开始，Oracle Data Pump（Oracle数据泵）替代了传统的导入和导出命令，将这些操作的性能提高到新的水平。导出到外部数据源最多可加快两倍，而导入操作最多可以加快45倍，因为Oracle Data Pump导入使用直接路径加载，这一点不同于传统的导入。此外，从源数据库的导出可同时导入目标数据库，而不需要中间的转储文件，从而节省时间和管理工作。使用带有expdb和impdb命令的DBMS_DATAPUMP程序包可以实现Oracle Data Pump，它包括大量其他可管理特性，如细粒度的对象选择。Oracle Data Pump也与Oracle 12c的所有新功能保持同步，如将整个可插入数据库（PDB）从一个容器数据库（CDB）移到另一个。
+
+### 1.7.2 冷备份
+
+建立数据库物理备份的一种方法是执行脱机备份（offline backup），习惯称“冷备份”。为执行脱机备份，需要关闭数据库，并且将所有与数据库相关的文件，包括数据文件、控制文件、SPFILE和密码文件等，复制到其他位置。一旦复制操作完成，就可以启动数据库实例。
+
+脱机备份类似于导出备份，因为它们都是时间点备份，因此在需要最新的数据库恢复并且数据库不处于ARCHIVELOG模式时，这些备份的作用较小。脱机备份的另一个不足之处在于执行备份所需要的停机时间，任何需要24/7数据库访问的跨国公司通常不会经常进行脱机备份。
+
+### 1.7.3 热备份
+
+如果数据库处于ARCHIVELOG模式，则可能进行数据库的联机备份（online backup），习惯称“热备份”。可打开数据库，并且用户可以使用该数据库，即使当前正在进行备份。进行联机备份的过程非常简单，只要使用ALTER TABLESPACE USERS BEGIN BACKUP命令将表空间转入备份状态，使用操作系统命令备份表空间中的数据文件，然后使用ALTER TABLESPACE USERS END BACKUP命令将表空间转移出备份状态即可。
+
+### 1.7.4 RMAN
+
+备份工具“恢复管理器（Recovery Manager）”，更常见的叫法是RMAN，它从Oracle 8就开始出现了。RMAN提供了优于其他备份形式的许多优点。它可在完整的数据库备份之间只对改动的数据块进行增量式备份，同时数据库在整个备份期间保持联机。
+
+RMAN通过以下两种方法跟踪备份：通过备份数据库的控制文件；通过存储在另一个数据库中的恢复目录。对于RMAN，使用目标数据库的控制文件比较简单，但对于健壮企业备份方法学，这并不是最佳解决方案。虽然恢复目录需要另一个数据库来存储目标数据库的元数据和所有备份的记录，但如果目标数据库中的所有控制文件由于灾难性故障而丢失，这时就值得采用恢复目录的方法。此外，恢复目录保留历史备份信息，如果将CONTROL_FILE_ RECORD_KEEP_TIME的值设置得太低，则可能在目标数据库的控制文件中重写这些备份信息。
 
 ## 1.8 安全功能
-## 1.9 实时应用集群
+
+### 1.8.1 权限和角色
+
+在Oracle数据库中，“权限（privilege）”用于控制用户对可执行的操作以及数据库中对象的访问。控制对数据库中操作的访问的权限称为“系统权限”，而控制对数据和其他对象的访问的权限称为“对象权限”。
+
+为便于DBA分配和管理权限，数据库“角色（role）”将权限结合在一起。换言之，角色是指定的权限组。此外，角色自身可以赋予角色。
+
+使用GRANT和REVOKE命令可授予以及取消权限和角色。用户组PUBLIC既不是用户也不是角色，也不可删除该用户组。然而，将权限授予PUBLIC时，它们会被授予现在和将来的每个数据库用户。
+
+1. 系统权限
+   
+   系统权限授予在数据库中执行特定类型操作的权利，如创建用户、改变表空间或删除任意视图。
+   
+   例如，授予系统权限的示例：
+   ```sql
+   grant drop any table to scott with admin option;
+   ```
+   用户SCOTT可删除任意模式中任何一个人的表，WITH GRANT OPTION子句允许SCOTT将最近授予他的权限授予其他用户。
+
+2. 对象权限
+   在数据库中的特定对象上可授予对象权限。最常见的对象权限是用于表的SELECT、UPDATE、DELETE和INSERT，用于PL/SQL存储对象的EXECUTE，以及用于授予在表上创建索引权限的INDEX。
+   
+   例如，用户RJB可在HR模式的JOBS表上执行任意DML命令：
+   ```sql
+   grant select, update, insert, delete on hr.jobs to rjb;
+   ```
+
+### 1.8.2 审核
+
+要审核用户对数据库对象的访问，可以通过使用AUDIT命令在指定对象或操作上建立审核跟踪（audit trail）。可审核SQL语句和对特定数据库对象的访问，操作的成功或失败（或者两者）可记录在审核跟踪表`SYS.AUD$`中，如果`AUDIT_TRAIL`初始参数的值为OS，则记录在O/S文件中。对于每个审核操作，Oracle都创建一条审核记录，其中包括用户名、执行的操作类型、涉及的对象以及时间戳。各种数据字典视图，如`DBA_AUDIT_TRAIL`和`DBA_FGA_AUDIT_TRAIL`，可以较容易地解释来自原始审核跟踪表SYS.AUD$的结果。
+
+**需要注意的是，对数据库对象进行过度审核可能会对性能产生负面影响。应该先对关键的权限和对象进行基础审核，然后在基础审核表明潜在问题时再扩展审核。**
+
+### 1.8.3 细粒度的审核
+
+细粒度的审核功能是Oracle 9i的新增功能，在Oracle 10g、11g和Oracle 12c中得到了增强，并进一步地扩展了审核：在EMPLOYEE表上执行SELECT语句时，标准审核可以进行检测；细粒度的审核将生成一条包含EMPLOYEE表中特定访问列的审核记录，例如SALARY列。
+
+使用DBMS_FGA程序包和数据字典视图DBA_FGA_AUDIT_TRAIL可实现细粒度的审核。数据字典视图DBA_COMMON_AUDIT_TRAIL将DBA_AUDIT_TRAIL中的标准审核记录和细粒度的审核记录结合在一起。
+
+
+### 1.8.4 虚拟私有数据库
+
+Oracle的虚拟私有数据库（Virtual Private Database）特性从Oracle 8i开始引入，它将细粒度的访问控制和安全应用程序上下文结合起来。安全策略附加到数据，而不是附加到应用程序，这就确保了安全规则的实施与数据访问方式无关。
+
+例如，一个医疗应用程序上下文可能根据访问数据的病人标识号返回一个谓词，在WHERE子句中使用该谓词可确保从表中检索的数据只是与该病人相关的数据。
+
+### 1.8.5 标号安全性
+
+Oracle的标号安全性（Label Security）提供了“VPD Out-of-the-Box（预设值）”解决方案，VPD即Virtual Private Database（虚拟专用数据库）；根据请求访问的用户标号和表自身行上的标号，该解决方案可限制对任何表中行的访问。Oracle标号安全性管理员不需要任何特殊的编程技巧就可以将安全性策略标号赋给用户和表中的行。
+
+例如，高粒度的数据安全性方法允许应用程序服务提供商（Application Service Provider，ASP）的DBA只创建账户可接收应用程序的一个实例，并且使用标号安全性来限制每个表中的行只包括单个公司的账户可接收信息。
+
+## 1.9 RAC
+
+数据库和实例是一对多的关系，即一个数据库对应多个实例。
+
+Oracle的实时应用群集（Real Application Cluster，RAC）允许不同服务器上的多个实例访问相同的数据库文件。
+
+无论是计划内的断电，还是意外断电，RAC装备都提供了相当高的可用性。可以使用新的初始参数重新启动一个实例，而另一个实例仍然服务于针对数据库的请求。如果一个硬件服务器由于某种故障而崩溃，则另一个服务器上的Oracle实例将继续处理事务，即使从连接到崩溃服务器的用户看来，这个过程也是透明的，且具有最短的停机时间。
+
+然而，RAC并不是一种只针对软件的解决方案：实现RAC的硬件也必须满足特定要求。共享数据库应该在支持RAID的磁盘子系统上，从而确保存储系统的每个组件都是容错的。此外，RAC需要在群集中的节点之间具有高速互连或私有网络，从而使用缓存融合（Cache Fusion）机制支持一个实例到另一个实例的通信和块传输。
+
+一个双节点的RAC如下图所示：
+
+![Alt text](image-11.png)
+
 ## 1.10 流
+
+作为Oracle企业版的一个组成部分，Oracle流是Oracle基础结构的高级组成部分，它是RAC的补充。Oracle流允许数据和事件在同一个数据库中或两个数据库之间平稳地流动和共享。它是Oracle众多高可用性解决方案的一个关键部分，用于配合并增强Oracle的消息队列、数据复制和事件管理功能。
+
 ## 1.11 企业管理器
+
+Oracle企业管理器(Oracle Enterprise Manager，OEM)是一组重要工具，用于帮助对Oracle基础结构的所有组成部分进行综合性管理，包括Oracle数据库实例、Oracle应用服务器及Web服务器。如果第三方应用程序存在管理代理，则OEM可在任何与Oracle的提供目标相同的框架中管理第三方应用程序。
+
+OEM通过IE、Firefox或Chrome完全支持Web，因此支持IE、Firefox或Chrome的任意操作系统平台都可以用于启动OEM控制台。
+
+使用具有Oracle网格控制(Grid Control)的OEM时，需要做的一个关键决定是选择管理仓库(management repository)的存储位置。OEM管理仓库存储在与管理或监控的节点或服务分离的数据库中。它将来自节点和服务的元数据集中起来，为管理这些节点提供了方便。因此，应该经常备份对仓库数据库的管理，并将该备份与被管理的数据库隔离。OEM的安装提供了大量的“预设”值。当OEM安装完成时，已经准备好建立电子邮件通知，用于向SYSMAN或其他任何符合关键条件的电子邮件账户发送消息，并且自动完成初始目标的发现。
+
 ## 1.12 初始化参数
+
+Oracle数据库使用初始参数来配置内存设置和磁盘位置等。有两种方法可用于存储初始参数：使用可编辑的文本文件和使用服务器端的二进制文件。不管采用什么方法来存储初始参数，都存在一组已定义的基本初始参数（从Oracle 10g开始），**每个DBA在创建新的数据库时都应该熟悉这些初始参数**。
+
+从Oracle 10g开始，初始参数主要分为两类：基本初始参数和高级初始参数。因为Oracle越来越自动化管理，所以DBA每天必须熟悉和调整的参数数量正逐渐减少。
+
+### 1.12.1 基本初始参数
+
+下表列出了Oracle 12c的基本初始参数，并进行了简要描述。随后会对这些参数做进一步的解释，并对应该如何设置其中的一些参数给出建议，这取决于硬件和软件环境、应用程序类型以及数据库中的用户数量。
+
+参考官方文档：[Basic Initialization Parameters](https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/basic-initialization-parameters.html#GUID-D75F1A77-47E2-4F35-B145-44B3A10ED85C)
+
+| 初始化参数 | 说明 |
+| - | - |
+| CLUSTER_DATABASE | 启用该节点作为群集的一个成员 |
+| COMPATIBLE | 允许安装新的数据库版本，同时确保与该参数指定的版本兼容 |
+| CONTROL_FILES | 指定该实例的控制文件的位置 |
+| DB_BLOCK_SIZE | 指定Oracle块的大小。这种块大小用于创建数据库时的SYSTEM、SYSAUX 和临时表空间 |
+| DB_CREATE_FILE_DEST | OMF数据文件的默认位置。如果没有设置DB_CREATE_ONLINE_LOG_DEST_n，该参数也用于指定控制文件和重做日志文件的位置 |
+| DB_CREATE_ONLINE_LOG_DEST_n | OMF 控制文件和联机重做日志文件的默认位置 |
+| DB_DOMAIN | 数据库驻留在分布式数据库系统中的逻辑域名（如us.oracle.com） |
+| DB_NAME | 最多8个字符的数据库标识符。放置在DBDOMAIN值的前面，形成完全限定的名称（如marketing。us.oracle.com） |
+| DB_RECOVERY_FILE_DEST | 恢复区域的默认位置。必须和DB_RECOVERY_FILE_DEST_SIZE一起设置 |
+| DB_RECOVERY_FILE_DEST_SIZE | 以字节为单位的文件最大尺寸，该文件用于在恢复区域位置的恢复 |
+| DB_UNIQUE_NAME | 数据库的全局唯一名称，它可将同一DB_DOMAIN中具有相司DBNAME的数据库区分开 |
+| INSTANCE_NUMBER | 在RAC安装中，群集中该节点的实例数量 |
+| LDAP_DIRECTORY_SYSAUTH | 为具有SYSDBA和SYSOPER角色的用户启用或禁用基于目录的授权 |
+| LOG_ARCHIVE_DEST_n | 对于ARCHIVELOG模式，最多有31个位置用于发送归档的日志文件 |
+| LOG_ARCHIVE_DEST_STATE_n | 设置对应的LOGARCHIVEDESTn地点的可用性 |
+| NLS_LANGUAGE | 指定数据库的默认语言，包括消息、日和月的名称，以及排序规则（如AMERICAN) |
+| NLS_DATE_LANGUAGE | NLS_TERRITORY的派生，指定用于拼写由TO_DATE和TO_CHAR返回的日、月名称和日期缩写（a.m.、p.m.、AD、BC）的语言功能 |
+| NLS_TERRITORY | 用于日和星期编号的地域名称（如SWEDEN、TURKEY或AMERICA） |
+| OPEN_CURSORS | 每个会话最多可以打开的游标数量 |
+| PGA_AGGREGATE_TARGET | 分配给实例中所有服务器进程的全部内存 |
+| PROCESSES | 可同时连接到Oracle的最大操作系统进程数量，SESSIONS和TRANSACTIONS从这个值派生 |
+| REMOTE_LISTENER | 网络名称，分析该名称可了解Oracle Net 远程监听器 |
+| REMOTE_LOGIN_PASSWORDFILE | 指定Oracle 如何使用密码文件，RAC中必须使用该参数 |
+| SESSIONS | 最大会话数量，也可表示实例中同时具有的用户数量。默认值为1.1*PROCESSES+5。Oracle 建议，除非在极特殊情况下否则应使用该参数的默认值 |
+| SGA_TARGET | 指定所有SGA 组成部分的全部大小，该参数自动确定DB_CACHE_SIZE、SHARED POOL_SIZE、LARGE_POOLSIZE、STREAMS_POOL_SIZE和JAVA_POOL_SIZE |
+| SHARED_SERVERS | 启动实例时分配的共享服务器进程数量 |
+| STAR_TRANSFORMATION_ENABLED | 开始执行查询时控制查询优化 |
+| UNDO_TABLESPACE | 将UNDOMANAGEMENT设置为AUTO时使用的表空间 |
+
+下面列出为每个新数据库设置的一些参数：
+
+1. 
+
+### 1.12.2 高级初始参数
+
+
 
 # 2 安装和升级Oracle Database 19c
 
