@@ -884,21 +884,105 @@ Oracle数据库使用初始参数来配置内存设置和磁盘位置等。有�
 
 下面列出为每个新数据库设置的一些参数：
 
-1. 
+1. **COMPATIBLE**
+
+   COMPATIBLE参数允许安装较新版本的Oracle，同时限制新版本的特性集，就像安装了旧的Oracle版本一样。该方法可以很好地用于数据库升级，同时保留与那些在新版本软件下运行可能会失败的应用程序的兼容性。当重做或重写应用程序，使其在新版本的数据库中工作时，可以重新设置COMPATIBLE参数。
+   
+   使用该参数的缺点在于，没有任何新的数据库应用程序可以利用新的特性，除非将COMPATIBLE参数设置为与当前版本相同的值。
+
+2. **DB_NAMEDB_NAME**
+   
+   指定数据库名称的本地部分。该参数最多可为8个字符，并且必须以字母或数字字符开头。一旦设置该参数，就只能用Oracle DBNEWID实用程序（nid）改变该参数。DB_NAME在数据库的每个数据文件、重做日志文件和控制文件中记录。在数据库启动时，该参数的值必须匹配控制文件中记录的DB_NAME的值。
+
+3. **DB_DOMAIN**
+
+   DB_DOMAIN指定驻留数据库的网络域的名称。在分布式数据库系统中，DB_NAME和DB_DOMAIN结合起来的值必须唯一。
+
+4. **DB_RECOVERY_FILE_DEST 和 DB_RECOVERY_FILE_DEST_SIZE**
+   
+   当由于实例故障或介质故障而进行数据库恢复操作时，可方便地使用闪回恢复区（flash recovery area）来存储和管理与恢复或备份操作相关的文件。从Oracle 10g开始，参数DB_RECOVERY_FILE_DEST可以是本地服务器上的目录位置、网络目录位置或ASM磁盘区域。参数DB_RECOVERY_FILE_DEST_SIZE限制了允许将多少空间分配给恢复或备份文件。
+   
+   这些参数都是可选的，但如果指定了这些参数，RMAN就可以自动管理备份和恢复操作需要的文件。这种恢复区域的尺寸应该足够大，从而可以保存所有数据文件、递增的RMAN备份、联机重做日志、尚未备份到磁带的归档日志文件、SPFILE和控制文件的两个副本。
+
+5. **CONTROL_FILES**
+   
+   创建数据库时，CONTROL_FILES参数并不是必需的。如果未指定该参数，Oracle将在默认位置创建控制文件。或者，如果配置了OMF，则在由DB_CREATE_FILE_DEST或DB_CREATE_ONLINE_LOG_DEST_n指定的位置和由DB_RECOVERY_FILE_DEST指定的次级位置创建控制文件。一旦创建了数据库，如果正在使用SPFILE，则CONTROL_FILES参数反映控制文件位置的名称；如果正在使用文本初始参数文件，则必须以手动方式将位置添加到此文件。
+
+   然而，本书**强烈推荐在单独的物理卷上创建控制文件的多个副本。控制文件对于数据库完整性至关重要，并且非常小，应该在单独的物理磁盘上创建至少3个多元复用的控制文件副本**。此外，应该执行ALTER DATABASE BACKUP CONTROLFILE TO TRACE命令，用于在发生大灾难时创建文本格式的控制文件副本。
+
+   指定3个用于控制文件副本的位置：
+   ```sql
+   control_files = (/u01/oracle19c/ctl/control01.ctl,
+                     /u03/oracle19c/ctl/control02.ctl,
+                     /u07/oracle19c/ctl/control03.ctl)
+   ```
+
+6. **DB_BLOCK_SIZE**
+
+   参数DB_BLOCK_SIZE指定数据库中默认Oracle块的大小。在创建数据库时，使用该块大小创建SYSTEM、TEMP和SYSAUX表空间。理想情况下，该参数应等于操作系统块大小或是操作系统块大小的倍数，从而提高I/O效率。
+
+   在Oracle 9i之前，可为OLTP系统指定较小的块大小（4KB或8KB），并为DSS（Decision Support System，决策支持系统）数据库指定较大的块大小（最大为32KB）。然而，现在的表空间最多可以有5种块大小共存于同一数据库中，DB_BLOCK_SIZE采用较小的值比较好。然而，一般倾向于使用8KB作为所有数据库的最小值，除非已经在目标环境中严格证明4KB的块大小不会造成性能问题。Oracle建议，除非有特殊原因（例如许多表的行宽超过8KB），在Oracle Database 12c中，对于每个数据库而言，8KB都是理想的块大小。
+
+7. **SGA_TARGET**
+
+   Oracle 12c还可通过另一种方式为“设置它然后忘记它”数据库提供方便，就是能够指定所有SGA组成部分的内存总数。如果指定SGA_TARGET，参数DB_CACHE_SIZE、SHARED_POOL_SIZE、LARGE_POOL_SIZE、STREAMS_POOL_SIZE和JAVA_POOL_SIZE将由ASMM（Automatic Shared Memory Management，自动共享内存管理）自动确定其大小。如果设置SGA_TARGET时手动指定了这4个参数中任何一个参数的大小，那么ASMM将使用手动方式指定大小参数作为最小值。
+
+   一旦实例启动，自动确定大小的参数就可以动态递增或递减，只要没有超出参数SGA_MAX_SIZE指定的值即可。参数SGA_MAX_SIZE指定整个SGA的硬上限，不可以超出或改变这个值，除非重新启动实例。
+
+   不论如何指定SGA的大小，都需要确保服务器中有足够可用的空闲物理内存来保存SGA的组成部分和所有后台进程，否则将会产生过多分页，从而影响性能。
+
+8. **MEMORY_TARGET**
+   
+   按照Oracle文档的说法，MEMORY_TARGET并不是一个“基本”参数，但是它可以极大地简化实例内存管理。此参数指定Oracle系统范围内的可用内存，然后Oracle在SGA和PGA之间重新分配内存，以优化性能。该参数在一些硬件和OS组合上不可用。例如，如果在Linux操作系统上定义了大页面，就无法使用MEMORY_TARGET。
+
+9. **DB_CACHE_SIZE 和 DB_nK_CACHE_SIZE**
+
+   参数DB_CACHE_SIZE指定SGA中用于保存默认大小的块的区域大小，这些块包括来自于SYSTEM、TEMP和SYSAUX表空间的块。如果一些表空间的块大小不同于SYSTEM和SYSAUX表空间的块大小，那么最多可以定义4个其他的缓存。n的值可以是2、4、8、16和32，如果n的值与默认块大小相同，则对应的DB_nK_CACHE_SIZE参数为非法。虽然这个参数不是基本初始参数，但在从具有不同于DB_BLOCK_SIZE的块大小的另一个数据库中传送表空间时，该参数就成为非常基本的初始参数。
+
+   包括多个块大小的数据库具有非常明显的优点。处理OLTP应用程序的表空间可以有较小的块大小，而具有数据仓库表的表空间则可以有较大的块大小。除非行异常大，需要使用较大的块大小来避免单行跨越块边界，8KB块几乎总是最合理的块大小。然而，在为多个缓存大小分配内存时需要注意，不要将过多的内存分配给一个缓存大小，因为这会影响到分配给另一个缓存大小的内存。如果必须使用多个块大小，则使用Oracle的Buffer Cache Advisory特性，在视图V$DB_CACHE_ADVICE中监控每个缓存大小的缓存利用率，从而帮助指定这些内存区域的大小。
+
+10. **SHARED_POOL_SIZE、LARGE_POOL_SIZE、STREAMS_POOL_SIZE 和 JAVA_POOL_SIZE**
+    
+    参数SHARED_POOL_SIZE、LARGE_POOL_SIZE、STREAMS_POOL_SIZE及JAVA_ POOL_SIZE分别用于确定共享池、大型池、流池和Java池的大小，如果指定了SGA_TARGET初始参数，则Oracle自动设置这些参数。
+
+11. **PROCESSES**
+
+   PROCESSES初始参数的值表示可同时连接到数据库的进程总数，包括后台进程和用户进程。PROCESSES参数的良好起点可以是后台进程数50加上期望的最大并发用户数，对于较小的数据库来说，150是良好的起点，因为将PROCESSES参数设置过大几乎不会带来多少额外的系统开销。一个小型部门级数据库的值可能是256。我习惯设置为2000。
+
+12. **UNDO_MANAGEMENT 和 UNDO_TABLESPCAE**
+    
+    Oracle 9i中引入了AUM（Automatic Undo Management，自动撤消管理），当试图分配正确数量和大小的回滚段以便处理事务的撤消信息时，AUM能消除（或至少大大减少）麻烦。相反，它为所有撤消操作（除了SYSTEM回滚段）指定了一个撤消表空间，在将UNDO_MANAGEMENT参数设置为AUTO时，系统自动处理所有撤消管理。
 
 ### 1.12.2 高级初始参数
 
+高级初始参数包括没有列在此处的其他初始参数，在Oracle Database 12c的版本1中共有368个初始参数。设置基本初始参数时，Oracle实例可自动设置并调整大多数高级初始参数。
 
 
 # 2 安装和升级Oracle Database 19c
 
-## 2.1 安装19c
+## 2.1 升级到19c
 
-参见：
+如果你已经安装了Oracle数据库服务器较早的版本，则可以将数据库升级到Oracle Database 12c。有多种升级方式可以选择，正确的选择将取决于当前的Oracle软件版本和数据库大小等因素。
 
-## 2.2 升级到19c
+当从以前的版本升级时，先安装可以提供Oracle升级前信息的工具（Oracle Pre-Upgrade Information Tool），对已有数据库使用该工具可以对升级到Oracle Database 12c时潜在的兼容问题发出警报。
 
-参见：
+只有在当前数据库使用如下Oracle版本之一时，才支持将数据库直接升级到版本19c：11.2.0、12.1.0.2、12.2.0.1、18。
+
+要升级数据库，有4种选择：
+
+- **使用数据库升级助手（Database Upgrade Assistant，DBUA）来指导并在适当的位置执行升级**。在升级期间，旧数据库将成为Oracle 12c数据库。DBUA支持Oracle RAC（实时应用群集）和ASM（自动存储管理）。既可以在安装时启动DBUA，也可将DBUA作为安装后的一个独立工具。Oracle强烈建议对Oracle Database主要版本或补丁版本升级使用DBUA。
+
+- **执行数据库的手动升级**。在这个过程中，旧数据库将成为Oracle 12c数据库。即使非常谨慎地控制该过程的每个步骤，但如果漏掉一个步骤或忘记某个必要的步骤，这种方法也容易产生错误。
+
+- **使用Oracle Data Pump（Oracle数据泵）实用程序将数据从较早的Oracle版本移动到Oracle 12c数据库**。将使用两个单独的数据库：旧数据库作为导出源，而新数据库作为导入的目标。如果是从Oracle Database 11g升级，则使用Oracle Data Pump将数据从旧数据库移动到新数据库。尽管Oracle Data Pump是推荐使用的迁移方法，但也可以使用原来的导入／导出方式（imp和exp）从Oracle Database 10g和更早版本中导出数据，然后导入Oracle Database 12c。
+
+- **将数据从较早的Oracle版本复制到Oracle 12c数据库**。将使用两个单独的数据库：旧数据库作为复制源，新数据库作为复制目标。这种方法最直截了当，因为数据的转移主要是由引用旧数据库和新数据库的CREATE TABLE AS SELECT SQL语句组成的。但是，除非数据库只有很少的表，且不涉及已有的SQL调整集和统计信息等，否则Oracle不建议对生产数据库采用这种方法。一个例外是迁移到Oracle Exadata，此时，该方法允许利用诸如HCC（Hybrid Columnar Compression）和分区的Exadata特性，权衡一下，其优点超出了使用该方法的缺点。
+
+总的来说，通过数据库升级助手或手动升级方式，在适当的位置升级数据库，这称为“直接升级”。因为直接升级不涉及为升级数据库创建第二个数据库，所以相对于间接升级，它可以更快完成，需要的磁盘空间也较少。
+
+## 2.2 新安装19c
+
+参见：[rac-installation-guide-linux.md](../19C-RAC-Install/rac-installation-guide-linux.md)
 
 # 3 表空间管理
 
