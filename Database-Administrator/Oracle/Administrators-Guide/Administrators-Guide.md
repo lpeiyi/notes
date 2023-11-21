@@ -18,13 +18,13 @@
 
 数据库和实例架构图如下所示：
 
-![Alt text](image-1.png)
+![Alt text](./image/image-1.png)
 
 ### 1.1.1 数据库
 
 数据库是一组位于磁盘上用于存储数据的文件集。这些文件可以独立于数据库实例存在。如下图所示：
 
-![Alt text](image.png)
+![Alt text](./image/image.png)
 
 
 数据库由各种物理和逻辑结构组成，而表则是数据库中最重要的逻辑结构。“表”由包含相关数据的行和列组成。数据库至少要有存储有用信息的表。
@@ -35,7 +35,7 @@
 
 实例是管理数据库文件的内存结构集合。由一个称为系统全局区SGA的共享内存区和一些后台进程组成。这些后台进程在SGA和磁盘上的数据库文件之间交互。实例可以独立存在于数据库文件之外。如下图所示：
 
-![Alt text](image-2.png)
+![Alt text](./image/image-2.png)
 
 Oracle实例架构分为单实例和RAC。
 
@@ -47,11 +47,11 @@ Oracle实例架构分为单实例和RAC。
 
 Oracle数据库中的数据文件被分组到一个或多个表空间中。在每个表空间中，逻辑数据库结构（如表和索引）都是片段，被进一步细分为“盘区”（extent）和“块（block）”。这种存储的逻辑细分允许Oracle更有效地控制磁盘空间的利用率。如下图所示：
 
-![Alt text](image-3.png)
+![Alt text](./image/image-3.png)
 
 下面介绍逻辑结构的组成部分。他们之间的关系以及和物理结构的关系如下图所示：
 
-![Alt text](image-4.png)
+![Alt text](./image/image-4.png)
 
 **一、数据块（data block）**
 
@@ -104,7 +104,7 @@ Oracle数据库中的数据文件被分组到一个或多个表空间中。在�
 
 临时表分为全局临时表和私有临时表。他们的特点如下图所示：
 
-![Alt text](image-5.png)
+![Alt text](./image/image-5.png)
 
 
 **三、索引组织表**
@@ -148,7 +148,7 @@ INSERT INTO departments_obj_t VALUES ('hr', '10 Main St, Sometown, CA');
 
 **五、外部表**
 
-![Alt text](image-6.png)
+![Alt text](./image/image-6.png)
 
 外部表允许用户访问数据源，如文本文件，就如同该数据源是数据库中的表一样。表的元数据存储在Oracle数据字典中，但表的内容存储在外部。
 
@@ -479,7 +479,7 @@ Oracle数据库使用磁盘上的大量物理存储结构来保存和管理用�
 
 物理结构与逻辑存储结构之间的关系如下图所示：
 
-![Alt text](image-7.png)
+![Alt text](./image/image-7.png)
 
 ### 1.4.1 数据文件
 
@@ -596,7 +596,7 @@ select value from v$spparameter where name='control_files';
 
 下图显示了如何使用4个组来多元复用4个重做日志文件，每个组包含3个成员：
 
-![Alt text](image-8.png)
+![Alt text](./image/image-8.png)
 
 将成员添加到重做日志组非常简单。在ALTER DATABASE命令中，指定新文件的名称以及将要添加到其中的组的名称即可。创建的新文件的大小与组中其他成员相同：
 
@@ -627,7 +627,7 @@ Oracle使用服务器的物理内存来保存Oracle实例的许多内容：Oracl
 
 下图显示了这些Oracle内存结构之间的关系：
 
-![Alt text](image-9.png)
+![Alt text](./image/image-9.png)
 
 ### 1.6.1 SGA
 
@@ -687,7 +687,7 @@ Oracle的Java虚拟机（Java Virtual Machine，JVM）使用Java池来处理用�
 
 后台进程、数据库和Oracle SGA之间的关系如下图所示：
 
-![Alt text](image-10.png)
+![Alt text](./image/image-10.png)
 
 **一、SMON**
 
@@ -825,7 +825,7 @@ Oracle的实时应用群集（Real Application Cluster，RAC）允许不同服�
 
 一个双节点的RAC如下图所示：
 
-![Alt text](image-11.png)
+![Alt text](./image/image-11.png)
 
 ## 1.10 流
 
@@ -1032,7 +1032,7 @@ SYSAUX表空间 与SYSTEM表空间类似，SYSAUX表空间不应该有任何用�
 
 在下图中，用户OE有两个活动会话，这些会话需要临时表空间来执行排序操作：
 
-![Alt text](image-12.png)
+![Alt text](./image/image-12.png)
 
 并不是将单个临时表空间赋给用户，而是赋给临时表空间组。在这个示例中，将临时表空间组TEMPGRP赋给OE。因为TEMPGRP临时表空间组中有3个实际的临时表空间，所以第一个OE会话可使用临时表空间TEMP1，第二个OE会话执行的SELECT语句可以并行使用其他两个临时表空间TEMP2和TEMP3。在Oracle 10g之前，两个会话都使用同一临时表空间，从而潜在地造成性能问题。
 
@@ -1072,11 +1072,11 @@ User created.
 
 在Oracle Database 10g和Oracle Database 11g中，对数据字典视图进行了一些改动，以支持临时表空间组。与Oracle以前的版本一样，数据字典视图DBA_USERS仍有TEMPORARY_TABLESPACE列，但该列现在可以包含分配给用户的临时表空间或临时表空间组的名称。
 
-![Alt text](image-13.png)
+![Alt text](./image/image-13.png)
 
 新的数据字典视图DBA_TABLESPACE_GROUPS显示了每个临时表空间组的成员：
 
-![Alt text](image-14.png)
+![Alt text](./image/image-14.png)
 
 **四、大文件表空间**
 
@@ -1121,13 +1121,13 @@ Oracle的OFA（Optimal Flexible Architecture，优化灵活体系结构）提供
 
 **数据库文件**，任何非ASM的Oracle数据文件都驻留在/<mount point>/oradata/<database name>中，其中<mount point>是前面讨论的一种安装点，<database name>是初始参数DB_NAME的值。例如，/u02/oradata/rac0和/u03/oradata/rac0可以包含实例rac0的非ASM控制文件、重做日志文件和数据文件，而/u05/oradata/dev1可以包含同一服务器上实例dev1的相同文件。下图详述了oradata目录下不同文件类型的命名约定。
 
-![Alt text](image-15.png)
+![Alt text](./image/image-15.png)
 
 虽然Oracle表空间名可以长达30个字符，但建议在UNIX环境中保持表空间名为8个字符或更少。因为可移植的UNIX文件名限制为14个字符，并且OFA数据文件名的后缀为<n>.dbf，其中n是两个数字，即文件系统中总共需要6个字符用于后缀。这就为表空间名自身留下了8个字符可用。
 
 只有与数据库<database name>关联的控制文件、重做日志文件和数据文件应该存储在目录/<mount point>/oradata/<database name>中。对于没有使用ASM管理的数据库ord，数据文件名如下：
 
-![Alt text](image-16.png)
+![Alt text](./image/image-16.png)
 
 除了编号为8和9的文件之外，ord数据库中的所有数据文件都符合OFA标准，并且被展开到4个不同的安装点。编号为8的文件中的表空间名太长，而编号为9的文件没有用两位数的数字计数器来表示同一表空间的新数据文件。
 
@@ -1137,7 +1137,7 @@ Oracle的OFA（Optimal Flexible Architecture，优化灵活体系结构）提供
 
 大多数管理功能并不需要实际的数据文件名，因为ASM文件都是Oracle管理文件（Oracle Managed Files，OMF）。这减轻了数据库所需要的全部管理工作。在ASM存储结构中，类似于OFA的语法用于进一步细分文件类型：
 
-![Alt text](image-17.png)
+![Alt text](./image/image-17.png)
 
 在磁盘组+DATA和+FRA中，可以看到每个数据库文件类型，如数据文件、控制文件和联机日志文件，都有自己的目录。完全限定的ASM文件名具有如下格式：
 
@@ -1151,13 +1151,13 @@ Oracle的OFA（Optimal Flexible Architecture，优化灵活体系结构）提供
 
 下面列出了使用标准Oracle 12c安装创建的表空间，其中使用了Oracle通用安装程序（Oracle Universal Installer，OUI）。EXAMPLE表空间是可选的，如果在安装对话期间指定想要创建示例模式，则安装该表空间。
 
-![Alt text](image-18.png)
+![Alt text](./image/image-18.png)
 
 ### 3.2.1 SYSTEM
 
 本章前面提及，没有任何用户段应该存储在SYSTEM表空间中。通过自动将永久表空间分配给还没有被显式分配永久表空间的所有用户，CREATE DATABASE命令中的子句DEFAULT TABLESPACE可帮助防止这种情况的发生。**使用OUI执行的Oracle安装将自动分配USERS表空间为默认的永久表空间**。
 
-![Alt text](image-19.png)
+![Alt text](./image/image-19.png)
 
 ### 3.2.2 SYSAUX
 
@@ -1208,7 +1208,335 @@ USERS表空间计划用于由每个数据库用户创建的其他各种段，它
 
 ## 4.1 传统磁盘空间存储
 
+在使用第三方逻辑卷或Oracle自动存储管理的时候，必须能够管理数据库中的物理数据文件，从而确保高级别的性能、可用性和可恢复性。一般来说，这意味着将数据文件分散到不同的物理磁盘。通过在不同磁盘上保存重做日志文件和控制文件的镜像副本，除了可以确保可用性外，当用户访问驻留在多个物理磁盘（而不是一个物理磁盘）上的表空间中的表时，还可以有效地提高I/O性能。标识特定磁盘卷上的I/O瓶颈或存储缺陷只是完成了一半工作，一旦标识了瓶颈，就需要使用各种工具和知识将数据文件移到不同的磁盘。如果数据文件空间过多或空间不够，则调整已有数据文件的大小是一项常见任务。
 
+### 4.1.1 重设表空间和数据文件的大小
+
+在理想数据库中，应按最优的大小创建所有的表空间和其中的对象。主动重设表空间的大小或建立自动扩展的表空间可潜在地避免对性能的影响，这些性能影响发生在表空间扩展或由于表空间中的数据文件无法扩展而造成应用程序失败的情况下。
+
+重设表空间大小的过程和方法存在细微区别，具体取决于表空间是小文件表空间还是大文件表空间。小文件表空间是Oracle 10g之前唯一可用的表空间类型，可由多个数据文件组成。与之相反，大文件表空间可只由一个数据文件组成，但该数据文件可远大于小文件表空间中的数据文件：具有32KB块的大文件表空间可拥有最大为128TB的数据文件。此外，大文件表空间必须是本地管理的。
+
+**一、使用ALTER DATABASE重设小文件表空间的大小**
+
+在下面的示例中，尝试重设TS_LU9UP表空间的大小，该表空间包含一个数据文件，并且开始时的大小为5m。首先，将其调整为15m，然后意识到该表空间过大，将其缩减到10m。
+
+![Alt text](image.png)
+
+如果可用的空闲空间不支持重新调整大小的请求，或数据超出请求减少的大小，或者超出Oracle文件大小的限制，则Oracle都会返回错误。
+
+为避免被动地手动调整表空间的大小，可在修改或创建数据文件时使用`AUTOEXTEND`、`NEXT`和`MAXSIZE`子句进行主动调整。下表列出了ALTER DATAFILE和ALTER TABLESPACE命令中用于修改或创建数据文件的与空间相关的子句。
+
+![Alt text](image-1.png)
+
+下面针对数据文件`+DATA/lucdb/pdb1/datafile/lu9up01.dbf`，调整AUTOEXTEND=ON，指定每次扩展为5m，并指定数据文件的总大小不能超过50m：
+
+```sql
+SYS@lucdb(CDB$ROOT)> alter database datafile '+DATA/lucdb/pdb1/datafile/lu9up01.dbf' autoextend on next 5m maxsize 50m;
+
+Database altered.
+```
+
+如果包含数据文件的磁盘卷没有可用于数据文件扩展的磁盘空间，则必须将数据文件移到另一个磁盘卷，或创建位于另一个磁盘卷上的表空间的第二个数据文件。例如，当USERS表空间存放第一个数据文件的磁盘空间不足时，可以将第二个数据文件添加到不同磁盘上。我们创建一个USERS表空间的新的数据文件，初始大小为500MB，允许自动扩展，且每次扩展100MB，最大数据文件大小为2000MB（2GB）：
+```sql
+SQL> alter tablespace users add datafile '/u03/oradata/users02.dbf' size 500MB autoextend on next 100MB maxsize 2000MB;
+Tablespace altered.
+```
+
+这种情况在ASM中不会出现，如果数据文件的diskgroup空间不足时，我们添加asmdisk就好了，添加完后我们再对表空间进行扩展。
+
+
+注意，修改表空间中的已有数据文件时，使用ALTER DATABASE命令，而将数据文件添加到表空间时，使用ALTER TABLESPACE命令。如稍后所看到的那样，使用大文件表空间可简化这些类型的操作。
+
+**二、使用EM Database Express调整小文件表空间的大小**
+
+。。。
+
+**三、从表空间中删除数据文件**
+
+在Oracle Database 11g之前的版本中，删除表空间中的数据文件存在一定的问题，那就是无法提交单个命令来删除数据文件，除非删除整个表空间。此时，只有3种选择：
+
+- 容忍该数据文件。
+- 缩减该数据文件并关闭AUTOEXTEND。
+- 创建新的表空间，将所有对象移到新的表空间，并删除原来的表空间。
+
+从维护和元数据的观点看，虽然创建新的表空间是最理想的选择，但执行有关步骤很容易出错，并且表空间需要一定的停机时间，从而影响其可用性。
+
+12c以后可以单个命令来删除数据文件，但是也要注意以下情况：
+
+- 只能删除online状态的数据文件，offline和recover状态的数据文件执行删除命令会报错。
+- 不能删除一个表空间中第一个添加的数据文件，否则会报错。
+- 若一个表空间只包含1个数据文件，则不能删除该数据文件，否则会报错。
+- 删除数据文件后，磁盘上的文件并更新控制文件和数据字典中的信息，删除之后的原数据文件序列号可以重用。
+- 数据文件必须为空，也就是不能被对象占用，否则会报：ORA-03262: the file is non-empty。如果有对象占用了要删除的指定数据文件，必须重新组织表空间，将所有对象移到第一个数据文件，或新建一个表空间，将对象迁移到新的表空间。
+- 不能删除SYSTEM表空间的数据文件，否则报错：ORA-01541: system tablespace cannot be brought offline; shut down if necessary。
+
+```sql
+SYS@lucdb(CDB$ROOT)> select FILE_ID,file_name,tablespace_name,bytes /1024 / 1024 || 'm' mb,AUTOEXTENSIBLE,MAXBYTES /1024 / 1024 || 'm' max_mb,status from dba_data_files where tabl                                espace_name = 'TS_LU9UP';
+
+   FILE_ID FILE_NAME                                          TABLESPACE_NAME      MB                   AUTOEX MAX_MB     STATUS
+---------- -------------------------------------------------- -------------------- -------------------- ------ ---------- ------------------
+        47 +DATA/lucdb/pdb1/datafile/lu9up01.dbf              TS_LU9UP             10m                  YES    50m        AVAILABLE
+        48 +DATA/lucdb/pdb1/datafile/lu9up02.dbf              TS_LU9UP             5m                   YES    50m        AVAILABLE
+
+SYS@lucdb(CDB$ROOT)> select TABLESPACE_NAME,STATUS,CONTENTS,LOGGING from dba_tablespaces where TABLESPACE_NAME = 'TS_LU9UP';
+
+TABLESPACE_NAME      STATUS             CONTENTS                                   LOGGING
+-------------------- ------------------ ------------------------------------------ ------------------
+TS_LU9UP             ONLINE             PERMANENT                                  LOGGING
+
+SYS@lucdb(CDB$ROOT)> alter tablespace TS_LU9UP offline;
+
+Tablespace altered.
+
+SYS@lucdb(CDB$ROOT)> select TABLESPACE_NAME,STATUS,CONTENTS,LOGGING from dba_tablespaces where TABLESPACE_NAME = 'TS_LU9UP';
+
+TABLESPACE_NAME      STATUS             CONTENTS                                   LOGGING
+-------------------- ------------------ ------------------------------------------ ------------------
+TS_LU9UP             OFFLINE            PERMANENT                                  LOGGING
+
+SYS@lucdb(CDB$ROOT)> alter tablespace TS_LU9UP drop datafile '+DATA/lucdb/pdb1/datafile/lu9up02.dbf';
+alter tablespace TS_LU9UP drop datafile '+DATA/lucdb/pdb1/datafile/lu9up02.dbf'
+*
+ERROR at line 1:
+ORA-03264: cannot drop offline datafile of locally managed tablespace
+
+
+SYS@lucdb(CDB$ROOT)> alter tablespace TS_LU9UP online;
+
+Tablespace altered.
+
+SYS@lucdb(CDB$ROOT)> select TABLESPACE_NAME,STATUS,CONTENTS,LOGGING from dba_tablespaces where TABLESPACE_NAME = 'TS_LU9UP';
+
+TABLESPACE_NAME      STATUS             CONTENTS                                   LOGGING
+-------------------- ------------------ ------------------------------------------ ------------------
+TS_LU9UP             ONLINE             PERMANENT                                  LOGGING
+
+SYS@lucdb(CDB$ROOT)> alter tablespace TS_LU9UP drop datafile '+DATA/lucdb/pdb1/datafile/lu9up02.dbf';
+
+Tablespace altered.
+
+SYS@lucdb(CDB$ROOT)> select FILE_ID,file_name,tablespace_name,bytes /1024 / 1024 || 'm' mb,AUTOEXTENSIBLE,MAXBYTES /1024 / 1024 || 'm' max_mb,status from dba_data_files where tabl                                espace_name = 'TS_LU9UP';
+
+   FILE_ID FILE_NAME                                          TABLESPACE_NAME      MB                   AUTOEX MAX_MB     STATUS
+---------- -------------------------------------------------- -------------------- -------------------- ------ ---------- ------------------
+        47 +DATA/lucdb/pdb1/datafile/lu9up01.dbf              TS_LU9UP             10m                  YES    50m        AVAILABLE
+```
+
+**四、使用ALTER TABLESPACE调整大文件表空间的大小**
+
+大文件表空间由且仅由一个数据文件组成。用于改变表空间数据文件特征（如最大尺寸、是否完全可扩展及盘区大小）的大多数参数现在都可在表空间级别修改。首先创建一个大文件表空间，如下所示：
+
+```sql
+SYS@lucdb(CDB$ROOT)> create bigfile tablespace dmarts datafile '+DATA/lucdb/pdb1/datafile/dmarts.dbf' size 10m autoextend on next 10m maxsize 50m;
+
+Tablespace created.
+```
+
+只在具有小文件表空间的数据文件级别进行的有效操作，才可以在表空间级别用于大文件表空间：
+
+```sql
+SYS@lucdb(CDB$ROOT)> alter tablespace dmarts resize 20m;
+
+Tablespace altered.
+```
+
+虽然将ALTER DATABASE和DMARTS表空间的数据文件规范一起使用也可以起作用，但使用ALTER TABLESPACE语法的优点是显而易见的：不需要知道数据文件存储在何处。你可能已经料到，在具有小文件表空间的表空间级别尝试改变数据文件参数是不允许的：
+
+```sql
+SYS@lucdb(CDB$ROOT)> alter tablespace TS_LU9UP resize 20m;
+alter tablespace TS_LU9UP resize 20m
+*
+ERROR at line 1:
+ORA-32773: operation not supported for smallfile tablespace TS_LU9UP
+```
+
+如果大文件表空间因为其单个数据文件无法在磁盘上扩展而用尽空间，则需要将数据文件重新分配到另一个卷，4.1.2小节将讨论这一点。使用本章后面介绍的自动存储管理（ASM），完全可能做到不需要手动移动数据文件：不需要移动数据文件，只要添加另一个磁盘卷到ASM存储组即可。
+
+### 4.1.2 移动数据文件
+
+为更好地管理数据文件的大小或改进数据库的整体I/O性能，可能需要将表空间中的一个或多个数据文件移到不同位置。重新定位数据文件有3种方法：使用ALTER DATABASE命令、使用ALTER TABLESPACE命令，以及通过EM Database Control或EM Database Express（尽管EM Database Control和EM Database Express没有提供重新定位数据文件需要的所有命令）。
+
+对于Oracle Database 11g和更早版本，除了SYSTEM、SYSAUX、联机撤消表空间及临时表空间外，ALTER TABLESPACE方法可用于其他所有表空间中的数据文件。ALTER DATABASE方法可用于所有表空间中的数据文件，因为在进行移动操作时实例将被关闭。
+
+如果正在使用Oracle Database 12c以上的版本，可在整个数据库联机时移动任何数据文件，甚至从传统文件系统移动到ASM，或从ASM移动到传统文件系统。但使用该方法时会产生一点开销，应查看服务级别协议（Service-Level Agreement，SLA），并确保移动操作不会对响应时间产生负面影响。
+
+**一、使用ALTER DATABASE移动数据文件**
+
+使用ALTER DATABASE移动一个或多个数据文件的步骤如下：
+
+1. 作为SYSDBA连接到数据库，并且关闭实例。
+   
+   ```sql
+   sqlplus / as sysdba
+   shutdown immediate;
+   ```
+2. 使用操作系统命令移动数据文件。
+   
+   在SQL*Plus中，使用“!”转义字符，执行操作系统命令，以移动数据文件：
+
+   ```sql
+   SQL> ! mv /u02/oradata/xport.dbf /u06/oradata
+   ```
+3. 以MOUNT模式打开数据库。
+   
+   ```sql
+   startup mount;
+   ```
+4. 使用ALTER DATABASE改变对数据库中数据文件的引用。
+   
+   改变控制文件中的路径名引用，以将其指向数据文件的新位置：
+
+   ```sql
+   SQL> alter database rename file '/u02/oradata/xport.dbf' to '/u06/oradata/xport.dbf';
+   Database altered.
+   ```
+
+5. 以OPEN模式打开数据库。
+   
+   打开数据库，使用户可使用该数据库：
+
+   ```sql
+   alter database open;
+   ```
+
+6. 对包括控制文件的数据库执行增量备份或完整备份。
+   
+   建立更新过的控制文件的备份副本：
+
+   ```sql
+   SQL> alter database backup controlfile to trace;
+    Database altered.
+   ```
+
+   也可选用RMAN执行增量备份，其中包括了控制文件的备份。
+
+
+**二、使用ALTER TABLESPACE以脱机模式移动数据文件（11g或更早版本）**
+
+如果希望移动的数据文件是某个表空间的一部分，而该表空间不是SYSTEM、SYSAUX、活动的撤消表空间或临时表空间，则使用ALTER TABLESPACE方法移动表空间会更好一些，其主要原因在于：除了其数据文件将被移动的表空间外，所有用户在整个操作期间都可以使用数据库的剩余部分。
+
+使用ALTER TABLESPAC移动一个或多个数据文件的步骤如下：
+
+1. 使用具有ALTER TABLESPACE权限的账户，对表空间进行脱机处理。
+   
+   ```sql
+   alter tablespace xport offline;
+    Tablespace altered.
+   ```
+
+2. 使用操作系统命令移动数据文件。
+   
+   ```sql
+   ! mv /u06/oradata/xport.dbf /u05/oradata/xport.dbf
+   ```
+
+3. 使用ALTER TABLESPACE改变对数据库中数据文件的引用。
+   
+   ```sql
+    alter tablespace xport rename datafile
+    '/u06/oradata/xport.dbf' to '/u05/oradata/xport.dbf';
+    Tablespace altered.
+   ```
+
+4. 将表空间返回到联机状态。
+   
+   ```sql
+   alter tablespace xport online;
+    Tablespace altered.
+   ```
+
+**三、联机移动数据文件（Oracle Database 12c）**
+
+在Oracle Database 12c中，可在包含数据文件的表空间依然联机时，从ASM磁盘组移出数据文件，或将数据文件移入ASM磁盘组。这使DBA更容易管理Oracle的使用，用户也能更方便地使用Oracle数据库。
+
+在本例中，DMARTS表空间驻留在/u02文件系统中，需要将其移到+DATA磁盘组。
+
+![Alt text](image-2.png)
+
+在表空间依然联机时，可用一条命令，成功将DMARTS表空间中的单个数据文件移到+DATA磁盘组：
+
+```sql
+    SQL> alter database move datafile '/u02/oradata/dmartsbf.dbf' to '+DATA';
+    Database altered.
+```
+
+### 4.1.3 移动联机重做日志文件
+
+虽然通过删除整个重做日志组并在不同的位置重新添加这些组，可以间接移动联机重做日志文件，但是，如果只有两个重做日志文件组，则这种解决方案将不起作用，因为数据库不会在只有一个重做日志文件组的情况下打开。如果数据库必须保持打开状态，可选择临时添加第3个组并删除第一个或第二个组。也可以关闭数据库，并用以下方法移动重做日志文件。
+
+```sql
+SYS@lucdb(CDB$ROOT)> select group#,member from v$logfile order by group#,member;
+SYS@lucdb(CDB$ROOT)> shutdown immediate;
+SYS@lucdb(CDB$ROOT)> ! mv ...
+SYS@lucdb(CDB$ROOT)> startup mount;
+SYS@lucdb(CDB$ROOT)> alter database rename file 'logfile_old' to 'logfile_new';
+SYS@lucdb(CDB$ROOT)> alter database open;
+SYS@lucdb(CDB$ROOT)> select group#,member from v$logfile order by group#,member;
+```
+
+重做日志文件不再和Oracle软件竞争I/O。另外，在两个不同的挂载点/u04和/u05之间多元复用了重做日志文件。
+
+### 4.1.4 移动控制文件
+
+在使用初始参数文件时，移动控制文件的步骤类似于前面移动数据文件和重做日志文件的过程：关闭实例，使用操作系统命令移动文件，然后重新启动实例。然而，在使用服务器参数文件（SPFILE）时，该过程稍有不同。当实例正在运行，或者实例已经关闭但以NOMOUNT模式打开时，应使用ALTER SYSTEM . . . SCOPE=SPFILE改变初始文件参数CONTROL_FILES。由于CONTROL_FILES参数不是动态参数，因此无论何种情况都必须先关闭实例，然后重新启动。
+
+然而，在使用服务器参数文件（SPFILE）时，该过程稍有不同。当实例正在运行，或者实例已经关闭但以NOMOUNT模式打开时，应使用ALTER SYSTEM . . . SCOPE=SPFILE改变初始文件参数CONTROL_FILES。由于CONTROL_FILES参数不是动态参数，因此无论何种情况都必须先关闭实例，然后重新启动。
+
+```sql
+SYS@lucdb(CDB$ROOT)> show parameter control_files
+SYS@lucdb(CDB$ROOT)> select name,value from v$spparameter where name = 'control_files';
+SYS@lucdb(CDB$ROOT)> alter system set contol_file = '' scope = spfile;
+SYS@lucdb(CDB$ROOT)> shutdown immediate;
+SYS@lucdb(CDB$ROOT)> startup;
+```
+
+注意：在对表空间存储和闪回恢复区使用ASM磁盘的Oracle Database 11g或12c默认安装中，控制文件的一个副本在默认表空间ASM磁盘中创建，另一个副本在闪回恢复区中创建。
+
+将控制文件的一个或多个副本放到ASM卷很容易：使用RMAN实用工具（第12章将详细介绍），将控制文件备份还原到ASM磁盘位置即可，如以下示例所示：
+
+```sql
+RMAN> list backup of controlfile;
+List of Backup Sets
+===================
+BS Key  Type LV Size       Device Type Elapsed Time Completion Time
+------- ---- -- ---------- ----------- ------------ -------------------
+105     Full    18.08M     DISK        00:00:00     2023-11-19 23:47:49
+        BP Key: 105   Status: AVAILABLE  Compressed: NO  Tag: TAG20231119T234749
+        Piece Name: +FRA/LUCDB/AUTOBACKUP/2023_11_19/s_1153352869.271.1153352869
+  Control File Included: Ckp SCN: 6359960      Ckp time: 2023-11-19 23:47:49
+
+BS Key  Type LV Size       Device Type Elapsed Time Completion Time
+------- ---- -- ---------- ----------- ------------ -------------------
+106     Full    18.08M     DISK        00:00:00     2023-11-20 00:05:00
+        BP Key: 106   Status: AVAILABLE  Compressed: NO  Tag: TAG20231120T000500
+        Piece Name: +FRA/LUCDB/AUTOBACKUP/2023_11_20/s_1153353900.283.1153353901
+  Control File Included: Ckp SCN: 6361060      Ckp time: 2023-11-20 00:05:00
+
+BS Key  Type LV Size       Device Type Elapsed Time Completion Time
+------- ---- -- ---------- ----------- ------------ -------------------
+107     Full    18.08M     DISK        00:00:00     2023-11-21 00:15:15
+        BP Key: 107   Status: AVAILABLE  Compressed: NO  Tag: TAG20231121T001515
+        Piece Name: +FRA/LUCDB/AUTOBACKUP/2023_11_21/s_1153440915.263.1153440915
+  Control File Included: Ckp SCN: 6486040      Ckp time: 2023-11-21 00:15:15
+
+
+RMAN> restore controlfile to '+FRA/LUCDB/AUTOBACKUP/2023_11_21/control_bak.ctl';
+Starting restore at 2023-11-21 00:42:24
+allocated channel: ORA_DISK_1
+channel ORA_DISK_1: SID=138 device type=DISK
+channel ORA_DISK_1: starting datafile backup set restore
+channel ORA_DISK_1: restoring control file
+output file name=+FRA/LUCDB/AUTOBACKUP/2023_11_21/control_bak.ctl
+channel ORA_DISK_1: reading from backup piece +FRA/LUCDB/AUTOBACKUP/2023_11_21/s_1153440915.263.1153440915
+channel ORA_DISK_1: piece handle=+FRA/LUCDB/AUTOBACKUP/2023_11_21/s_1153440915.263.1153440915 tag=TAG20231121T001515
+channel ORA_DISK_1: restored backup piece 1
+channel ORA_DISK_1: restore complete, elapsed time: 00:00:01
+Finished restore at 2023-11-21 00:42:25
+```
+
+下一步与前面介绍的添加基于文件系统的控制文件的步骤是相同的：改变CONTROL_FILES参数，除已有控制文件位置外，添加位置+DATA/dw/controlfile/control_ bak.ctl，然后关闭数据库，再重新启动数据库。
+
+类似地，可使用Linux实用工具asmcmd，将控制文件从一个磁盘组复制到另一个磁盘组，并改变CONTROL_FILES参数，以反映控制文件的新位置。稍后将概括介绍asmcmd命令。
 
 ## 4.2 自动存储管理
 
@@ -1218,7 +1546,7 @@ USERS表空间计划用于由每个数据库用户创建的其他各种段，它
 
 一、关闭虚拟机后，进入虚拟机目录创建将要用于 asm 的磁盘（一般为偶数个，且大小一样）。
 
-![添加磁盘](./image/Snipaste_2023-10-15_17-44-53.png)
+![添加磁盘](./image/image-20.png)
 
 二、启动后检查安装后的磁盘情况：
 ```bash

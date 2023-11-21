@@ -42,7 +42,7 @@ VIEW使用的两个表转换成的PAYMENT_UNIT_ID字段的对应列（HT_STAGES.
 先来看执行计划：
 
 
-![Alt text](image.png)
+![Alt text](./image/image.png)
  
 时间主要消耗在ID=5的全表扫描上，按照正常的情况，这一步应该是最后完成，而且是应该使用DMD_PAYMENT_UNIT_CONTROL_T表PAYMENT_UNIT_ID字段上的索引。当前因为这两个表之间没有直接关联关系，这一步的操作相当于做了笛卡尔积，这不科学。ID=7的步骤是正确的。
 
@@ -50,7 +50,7 @@ VIEW使用的两个表转换成的PAYMENT_UNIT_ID字段的对应列（HT_STAGES.
 我们再来看看没有使用hint的SQL执行计划：
 
 
-![Alt text](image-1.png)
+![Alt text](./image/image-1.png)
  
 这个执行计划问题更严重，因为没有做谓词推进(push_pred）,view使用的两个表做了全表扫描，原来SQL使用push_pred的hint还是起到了重要的优化效果。只是仍没有解决DMD_PAYMENT_UNIT_CONTROL_T表的全表扫描问题，应该算是一个优化了一半的SQL。
 
@@ -198,7 +198,7 @@ SELECT .. .. ..case
 sql monitor中显示的执行计划，8.5小时仍未执行完：
 
 
-![Alt text](image-2.png)
+![Alt text](./image/image-2.png)
  
 ***优化后SQL：***
 ```sql
@@ -287,7 +287,7 @@ case
 改写后的SQL执行情况，6.4分钟执行完：
 
 
-![Alt text](image-3.png)
+![Alt text](./image/image-3.png)
  
 对于主查询返回结果集大的SQL，如果存在标量子查询，必须通过改写才能大幅提高效率，否则效率会非常低。有点改写相对简单，有的会很复杂，改写后需要仔细验证改写前后业务逻辑的一致性。
 
@@ -557,7 +557,7 @@ when matched then
 某客户的经营分析系统，下面这个SQL，执行了1.2小时：
 
 
-![Alt text](image-4.png)
+![Alt text](./image/image-4.png)
 
 **sql:**
 
@@ -616,7 +616,7 @@ INTO MD_KPI_ACT_EMU_PRODUCT_MON_01 nologging
    WHERE t2.row_id = 1);
 ```
 
-![Alt text](image-5.png)
+![Alt text](./image/image-5.png)
 
 改写的思路是这样子的，由于结果集t和结果集t2都使用了字段msisdn作为分组，并且来源表是同一个，所以可以将结果集t2的操作用开窗的方式集成到结果集t中。
 
@@ -634,7 +634,7 @@ INTO MD_KPI_ACT_EMU_PRODUCT_MON_01 nologging
 通过检查超长时间SQL发现了它，这是一个执行时间与数据处理量不相匹配的SQL，sql monitor显示如下：
 
 
-![Alt text](image-6.png)
+![Alt text](./image/image-6.png)
 
 查看sql，发现在返回列使用了一个函数，SQL代码简化如下：
 
@@ -835,25 +835,25 @@ commit;
 
 1）not exists的结果：注意返回了一条关联字段为null的记录：
 
-![Alt text](image-7.png)
+![Alt text](./image/image-7.png)
 
 执行计划效率高，不用考虑子查询有空值的情况。建议写法。
 
 2）not in的结果：因为子查询的结果集中有一条记录是null，则整个查询结果为空（这是否是你想要的结果？）：
 
-![Alt text](image-8.png)
+![Alt text](./image/image-8.png)
 
 执行计划的join 步骤包含ANTI NA关键字，效率低。
 
 3）not in子查询没有null记录的情况：返回结果比not exists时少了一条id1=null的记录：
 
-![Alt text](image-9.png)
+![Alt text](./image/image-9.png)
  
 执行计划的join 步骤包含ANTI SNA 关键字，效率低。
 
 4）下面的SQL结果集和上面一样，但是执行计划却不一样，下面的效率更高：
 
-![Alt text](image-10.png)
+![Alt text](./image/image-10.png)
 
 执行计划的join 步骤只包含ANTI 关键字，效率高。
 
@@ -873,11 +873,11 @@ commit;
 
 建表过程略，表的大小如下：
 
-![Alt text](image-11.png)
+![Alt text](./image/image-11.png)
  
 速度对比验证开始：
 
-![Alt text](image-12.png)
+![Alt text](./image/image-12.png)
 
 先看前两步，第一步执行select count(*) from demo1所需要的时间为2.65秒，第二步执行select count(8) from demo1所需的时间为1.21秒，时间相差特别明显，当数据量再大些时相信会更加悬殊，第二步是第一步性能的两倍，难道就是因为少敲一个shift键吗（count(8)其实等同于count(1)，这里用count(8)是为了娱乐效果）。
 
@@ -887,13 +887,13 @@ commit;
 
 接着往下看，紧接着第二步，我们再执行一次select count(*) from demo1，看看会发生什么？
 
-![Alt text](image-13.png)
+![Alt text](./image/image-13.png)
  
 神奇的事情发生了，这一次count(*)比count(8)速度快了，？？？
 
 看到了这里，如果学习过Oracle的体系结构，就会明白，其实第一步和第二步的差异是磁盘读和内存读的区别，也就是常说的硬解析和软解析，所以第三步和第二步其实大差不差，都是软解析，直接从数据缓冲区中获取。下面通过执行计划证实：
 
-![Alt text](image-14.png)
+![Alt text](./image/image-14.png)
  
 可以看出两个语句的执行计划没有任何区别。
 
@@ -909,7 +909,7 @@ commit;
 
 先看一个系统AWR的top CPU SQL：
 
-![Alt text](image-15.png)
+![Alt text](./image/image-15.png)
  
 第二条sql是这样的：
 
@@ -923,7 +923,7 @@ SELECT TO_CHAR(:B1(60 * 60 * 24) +
 
 分析这段语句，发现有绑定变量':B1'，大概率为存储过程或者函数的内嵌SQL。通过动态性能视图dba_source查找这个sql语句的来源，经检查，它来源于一个将number类型的时间字段转换成日期字符串的function，名称为number2date1。
 
-![Alt text](image-16.png)
+![Alt text](./image/image-16.png)
  
 原Function代码如下：
 
@@ -948,7 +948,7 @@ END number2date1;
 
 优化前的执行计划如下：
 
-![Alt text](image-17.png)
+![Alt text](./image/image-17.png)
  
 我们根据第二个问题，优化后的代码为：
 
@@ -963,7 +963,7 @@ END number2date2;
 
 执行计划为：
 
-![Alt text](image-18.png)
+![Alt text](./image/image-18.png)
  
 对比优化前后的执行计划，优化前多次执行会消耗大量的recursive calls，而优化后无需进行递归调用，消耗的资源几乎可以忽略不计了。
 
@@ -971,7 +971,7 @@ END number2date2;
 
 https://docs.oracle.com/en/database/oracle/oracle-database/19/tgsql/performing-application-tracing.html#GUID-681AB1DC-082B-460C-8656-DC3286627D0C
  
-![Alt text](image-19.png)
+![Alt text](./image/image-19.png)
 
 大概就是，递归SQL是Oracle数据库在执行用户发出的SQL语句时必须发出的附加SQL。从概念上讲，递归SQL是“副作用SQL”。例如，如果会话将一行插入到没有足够空间容纳该行的表中，那么数据库将进行递归SQL调用来动态分配空间。时，数据库也会生成递归调用。数据字典信息在内存中不可用，因此必须从磁盘中检索。
 
@@ -979,7 +979,7 @@ IBM的手册中，讲了递归调用的触发条件：
 
 http://publib.boulder.ibm.com/tividd/td/ITMD/SC23-4724-00/en_US/HTML/oraclepac510rg59.htm
  
-![Alt text](image-20.png)
+![Alt text](./image/image-20.png)
 
 所以，大概是因为直接return返回计算结果不需要执行sql语句。
 
@@ -1180,7 +1180,7 @@ when matched then
 ```
 执行计划：
 
-![Alt text](image-21.png)
+![Alt text](./image/image-21.png)
  
 这个SQL的业务逻辑是，将用户交易明细表（trade）的最近的一笔消费额更新到用户信息表（t_customer）的消费字段。
 
@@ -1250,7 +1250,7 @@ when matched then update set c.amount = m.amount;
 ```
 执行计划：
 
-![Alt text](image-22.png)
+![Alt text](./image/image-22.png)
  
 逻辑看起来比较复杂难懂，一般不会用到这样的改写，了解一下就好。
 
@@ -1276,11 +1276,11 @@ SQL优化，除了要避免低效的SQL写法，主要还是要看表的数据�
 
 某个业务系统突然变得十分缓慢，查看AWR显示的主要等待事件为Enq: ss – contention：
 
-![Alt text](image-23.png)
+![Alt text](./image/image-23.png)
 
 SS指的是sort segments排序段，相关描述如下：
 
-![Alt text](image-24.png)
+![Alt text](./image/image-24.png)
  
 大概意思是，SS该锁是为了确保在并行DML操作期间创建的排序段不会过早清理。也就是数据库中的临时表空间不够用了，在等待数据库分配新的Sort Segment。
 
@@ -1346,7 +1346,7 @@ SELECT C.ACCT_ID,
 
 执行计划：
 
-![Alt text](image-25.png)
+![Alt text](./image/image-25.png)
  
 这种使用with的CTE（Common Table Expression）写法的SQL，在with对象被引用两次以上时，会先对命名对象生成一张临时表（如果包含字段包含lob字段则不会）写到临时表空间，这个过程叫materialize，后续使用该对象的时候直接从临时表中读取数据，不需要重复执行这段SQL。
 
@@ -1398,13 +1398,13 @@ SELECT distinct C.ACCT_ID,
 
 在执行并行DML操作时，Oracle数据库会创建多个Sort Segments以存储每个并行进程的结果，这些结果集需要按照特定的行序进行排序和合并，以得到最终的结果。并行DML操作允许数据库同时在多个CPU上执行相同的操作，以提高处理速度。
 
-![Alt text](image-26.png)
+![Alt text](./image/image-26.png)
  
 在本案例中，由于锁Sort Segment占用了大量的临时表空间，导致业务SQL需要等待分配新的Sort Segment（SQL的CTE和union都会用到临时表空间）。因此，本案例的核心就是为了解决临时表空间占用的问题，要么释放，要么减少使用频率。
 
 笔者给出了三种解决方案，第一种是释放，后面两种是强制不使用临时表空间。第一个方法治标不治本，可能还会频繁发生。第二个方法相比第三个方法比较简单，但是性能没有达到最优。第三个方法性能好，但是改写需要的比较清晰的思路，对我来说可能有点困难。在大概看了改写思路，自己尝试改写还是没能成功，最后还是通过画图才梳理清楚。
 
-![Alt text](image-27.png)
+![Alt text](./image/image-27.png)
 
 
 ## 2.15 update SQL的优化方法
@@ -1425,7 +1425,7 @@ UPDATE CSCU_SUBS_SPSERVICE_LIST
 
 执行计划：
 
-![Alt text](image-28.png)
+![Alt text](./image/image-28.png)
 
 原sql存在的问题是，update更新少量的记录，但是用时久，索引回表次数多。根据执行计划，可以推断出索引由4个字段组成，包含了EXPIRETIME，但是由于OR的写法限制了只能使用前三个字段，EXPIRETIME只能在回表时做filter。
 
@@ -1654,7 +1654,7 @@ select count(1) from temp;
 
 这个sql相对复杂一点，我们通过sql monitor显示的执行计划可以明显的看出瓶颈所在。因为谓词条件使用了or 连接两个exists子查询，所以只能使用filter操作，而主查询返回的记录数又比较多，就导致sql执行时间比较长。根据sql写法和执行计划反馈的信息，我们就可以通过改写来优化这个SQL。sql monitor显示(部分)：
 
-![Alt text](image-29.png)
+![Alt text](./image/image-29.png)
 
 有点糊，看不出来任何东西，就当看过了，继续往下。
 
@@ -2913,7 +2913,7 @@ select * from t1 order by object_id;
 
 2. date类型字段，但谓词条件的变量类型为timestamp：
    
-   ![Alt text](image-30.png)
+   ![Alt text](./image/image-30.png)
 
    hiredate >= systimestamp写法，会将date类型字段hiredate用内部函数INTERNAL_FUNCTION("HIREDATE")转换为timestamp类型，导致索引无法使用。
 
