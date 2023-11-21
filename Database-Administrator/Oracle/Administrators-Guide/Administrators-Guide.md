@@ -732,6 +732,59 @@ LGWR，或称为“日志写入程序”进程，负责管理重做日志缓冲�
 
 RECO即恢复器进程（recoverer process），用于处理分布式事务（即包括对多个数据库中的表进行改动的事务）的故障。如果同时改变CCTR数据库和WHSE数据库中的表，而在可以更新WHSE数据库中的表之前，两个数据库之间的网络连接失败了，RECO将回滚失败的事务。
 
+### 1.6.5 AMM
+
+自动内存管理的英文全称为 Automatic Memory Management。是指 Oracle自动地对 SGA 和 PGA 进行管理。如果我们要启动自动内存管理，只需设置MEMORY_TARGET 和 MEMORY_MAX_TARGET 即可。
+
+MEMORY_TARGET 用于设置目标内存大小，Oracle 会尝试将内存稳定在该值。如果你修改了 MEMORY_TARGET 并不需要重启数据库。MEMORY_MAX_TARGET 用于设置最大允许的内存大小，Oracle 以此来限制内存使用的最大值。如果你修改了该参数，你需要重启数据库。
+
+在修改以上两个值时需要特别注意，MEMORY_MAX_TARGET 必须大于或者等于 MEMORY_TARGET。
+
+调整内存的参考命令如下：
+
+```sql
+ALTER SYSTEM SET MEMORY_MAX_TARGET=1100M SCOPE = SPFILE;
+ALTER SYSTEM SET MEMORY_TARGET=1000M SCOPE= SPFILE;
+ALTER SYSTEM SET sga_target=0 SCOPE= SPFILE;
+ALTER SYSTEM SET pga_aggregate_target=0 SCOPE= SPFILE;
+startup force
+show parameter target
+col component form a30
+select COMPONENT,sum(CURRENT_SIZE/1024/1024) mb from v$memory_dynamic_components group by COMPONENT rder by mb desc;
+select pool,sum(BYTES)/1024/1024 mb from V$SGASTAT group by pool;
+select POOL,NAME,BYTES/1024/1024 mb from V$SGASTAT where pool is null;
+```
+
+**什么情况下使用自动内存管理？**
+
+Oracle 官方推荐 SGA+PGA 的内存总大小如果小于或等于 4GB，建议使用自动内存管理。如果你的 SGA+PGA 大于 4G 也使用了自动内存管理，那么建议最好设置 SGA_TARGET 和 PGA_AGGREGATE_TARGET 的值。那么这些值将作为 SGA 和 PGA 的最小值。该设置主要是为了避免过大的内存抖动。
+
+
+### 1.6.6 ASMM
+
+自动共享内存管理的英文全称为 Automatic Shared Memory Management，简称 ASMM。当启用自动共享内存管理时，Oracle 会自动地调整 SGA 的各个组件的值。如果需要启动自动共享内存管理，需要将SGA_TARGET 和 SGA_MAX_SIZE 设置为非 0 值，同时还需要将MEMORY_TARGET 和 MEMORY_MAX_TARGET 设置为 0，否则MEMORY_TARGET 不为 0，Oracle 采用的是ASM而不是ASMM。
+
+SGA_TARGET 用于设置共享内存目标大小，Oracle 会努力维持共享内存在此目标值，如果你修改了该参数，你并不需要重启数据库。SGA_MAX_SIZE 用于设置最大允许的共享内存大小，Oracle 以此来限制共享内存的最大值，如果你修改了该参数，你需要重启数据库。在修改以上两个值时需要注意，SGA_MAX_SIZE 必须大于或者等于SGA_TARGET。
+
+调整内存的参考命令如下：
+
+```sql
+ALTER SYSTEM SET SGA_TARGET =1000M SCOPE = SPFILE;
+ALTER SYSTEM SET SGA_MAX_SIZE =1000M SCOPE= SPFILE;
+ALTER SYSTEM SET MEMORY_MAX_TARGET = 0 SCOPE = SPFILE;
+ALTER SYSTEM SET MEMORY_TARGET = 0 SCOPE = SPFILE;
+startup force
+show parameter _target
+col component form a30
+select COMPONENT,sum(CURRENT_SIZE/1024/1024) mb from v$memory_dynamic_components group by COMPONENT order by mb desc;
+select pool,sum(BYTES)/1024/1024 mb from V$SGASTAT group by pool;
+select POOL,NAME,BYTES/1024/1024 mb from V$SGASTAT where pool is null;
+```
+
+**什么情况下使用自动共享内存管理？**
+
+Oracle 官方推荐 SGA+PGA 的总大小大于 4GB，建议使用自动共享内存管理。如果我们启用了自动共享内存管理，Oracle 会自动的调整 SGA 各组件大小，一般我们并不需要干预。但如果我们知道各组件高峰期时这些值的使用量，那么我们也可以为这些组件设置指定值，这些值将作为组件的最小值。从而避免高峰期时不必要的内存调整。
+
 ## 1.7 备份和恢复概述
 
 Oracle支持许多不同形式的备份和恢复。可在用户级别管理其中的一些备份和恢复，如导出和导入，而大多数备份和恢复严格以DBA为中心，如联机或脱机备份，以及使用操作系统命令或RMAN实用程序。
@@ -1540,13 +1593,590 @@ Finished restore at 2023-11-21 00:42:25
 
 ## 4.2 自动存储管理
 
+在创建新的表空间或其他数据库结构（如控制文件或重做日志文件）时，可指定磁盘组而不是操作系统文件，作为数据库结构的存储区域。ASM简化了Oracle管理文件（Oracle Managed Files，OMF）的使用，并将OMF与镜像和条带化特性结合起来，从而提供了健壮的文件系统和逻辑卷管理程序，这种管理程序甚至支持Oracle实时应用群集（Real Application Cluster，RAC）中的多个节点。ASM使得不再需要购买第三方逻辑卷管理程序。
+
+条带化是ASM的一个重要概念。
+
+**条带化（striping）技术就是一种自动的将 I/O 的负载均衡到多个物理磁盘上的技术，将一块连续的数据分成很多小部分并把他们分别存储到不同磁盘上去**。这就能使多个进程同时访问数据的多个不同部分而不会造成磁盘冲突，而且在需要对这种数据进行顺序访问的时候可以获得最大程度上的 I/O 并行能力， 从而获得非常好的性能。
+
+**ASM不仅能自动将数据库对象扩展到多个设备以增强性能，而且允许在不关闭数据库的情况下将新的磁盘设备添加到数据库，从而增强可用性。ASM自动重新平衡文件的分布，将所需的干涉降到最低限度。**
+
+### 4.2.1 ASM体系结构
+
+ASM将数据文件和其他数据库结构划分为多个盘区，并将盘区划分到磁盘组的所有磁盘中，从而增强性能和可靠性。ASM并未镜像整个磁盘卷，而是镜像数据库对象，从而提供根据类型有区别地镜像或条带化数据库对象的灵活性。如果底层磁盘硬件已启用RAID作为存储区域网络（Storage Area Network，SAN）的一部分，或者网络附加存储（Network Attached Storage，NAS）设备的一部分，则对象不可以条带化。
+
+自动重新平衡是ASM的另一个关键特性。需要增加磁盘空间时，可将额外的磁盘设备添加到磁盘组，ASM会将一定比例的文件从一个或多个已有的磁盘移动到新的磁盘，从而维持所有磁盘之间整体的I/O平衡。当包含在磁盘文件中的数据库对象保持联机并且可供用户用时，这种自动重新平衡在后台发生。如果在重新平衡操作期间I/O子系统会受到非常大的影响，可使用初始参数降低重新平衡发生的速度。
+
+ASM需要特殊类型的Oracle实例来提供传统Oracle实例和文件系统之间的接口。ASM软件的组件和Oracle数据库软件一起传输。在创建数据库并为SYSTEM、SYSAUX和其他表空间选择存储类型时，总可将这些组件作为一种选择。
+
+ASM并不支持组合使用ASM磁盘组与手动Oracle数据文件管理技术，ASM易于使用并且具有很高的性能，因此使用ASM磁盘组可以很好地满足所有存储需求。
+
+Oracle Database 10g中新增了两个Oracle后台进程，以支持ASM实例：RBAL和ORBn。RBAL协调磁盘组的磁盘活动，而ORBn（其中n可以是0~9之间的数字，在Oracle Database 12c中，也可以是字母A）执行磁盘组中磁盘之间的实际盘区移动。
+
+对于使用ASM磁盘的数据库，从Oracle Database 10g开始，也有两个新的后台进程：ASMB和RBAL。ASMB执行数据库和ASM实例之间的通信，而RBAL执行代表数据库的磁盘组中磁盘的打开和关闭。
+
+### 4.2.2 创建ASM实例
+
+ASM和CLUSTERWARE组成了Grid Infrastructure。ASM需要专用的Oracle实例来管理磁盘组。ASM实例一般只需要较少的内存占用：100MB ~150MB。安装Oracle软件时，当指定ASM为数据库的文件存储选项而ASM实例不存在时，将自动配置ASM实例。
+
+具有内存量超过128GB的服务器，Oracle建议最好将ASM实例的初始参数设置为如下值的近似值：
+
+- SGA_TARGET=1250M（ASMM）
+- PGA_AGGREGATE_TARGET=400M
+- MEMORY_TARGET=0或不设置（无AMM）
+
+### 4.2.3 ASM实例组件
+
+ASM实例跟普通实例有很大的差异，需要特定的方法和权限访问，并且有专属的初始化参数。
+
+**一、访问ASM实例**
+
+ASM实例没有数据字典，因此只有通过操作系统身份验证的用户才可以访问实例，即由dba组中的操作系统用户以SYSASM权限连接。
+
+以SYSASM权限连接到ASM实例的用户可执行所有的ASM操作，例如创建和删除磁盘组，以及向磁盘组中添加磁盘和从磁盘组中删除磁盘。在Oracle Database 11g和12c中，*拥有SYSDBA权限的用户仍可以与拥有SYSASM权限的用户一样执行相同的任务，但该角色已不建议使用*，在未来版本中，将不再拥有与SYSASM相同的权限。
+
+SYSOPER用户在使用可用于ASM实例中的命令集时有更多限制。一般来说，SYSOPER用户可用的命令只提供了足够的权限来执行已配置的和稳定的ASM实例的例程操作。下面列出SYSOPER可用的操作：
+
+- 启动和关闭ASM实例
+- 安装或卸载磁盘组
+- 将磁盘组的磁盘状态从ONLINE改为OFFLINE，或从OFFLINE改为ONLINE
+- 重新平衡磁盘组●执行磁盘组的完整性检查
+- 访问V$ASM_*动态性能视图
+
+总之，操作ASM实例时，强烈建议只是用SYSASM用户。
+
+在Oracle Database 12c中，为ASM实例添加了以下3种新权限。这些角色是面向任务的，有助于企业进一步划分职责要求：
+
+- SYSBACKUP 从RMAN或SQL*Plus命令行执行备份和恢复。
+- SYSDG 用Data Guard Broker或dgmgrl命令行执行Data Guard操作。
+- SYSKM 为TDE（Transparent Data Encryption）管理加密密钥。
+
+**二、ASM初始参数**
+
+ASM实例有许多特有的初始参数，并且某些初始参数在ASM实例中有新的值。对于ASM实例，强烈推荐使用SPFILE而不是初始参数文件。例如，在添加或删除磁盘组时，自动维护ASM_DISKGROUPS等参数，从而不需要手动改变该值。
+
+下面介绍与ASM相关的初始参数：
+
+- **INSTANCE_TYPE**：对于ASM实例，INSTANCE_TYPE参数具有ASM的值。对于传统的Oracle实例，默认值为LUCDB。
+  ```sql
+  SYS@+ASM()> show parameter instance_type
+   NAME                                 TYPE        VALUE
+   ------------------------------------ ----------- -----------------
+   instance_type                        string      ASM
+  ```
+- **MEMORY_TARGET**：目标内存大小。默认情况下，在 oracle asm 实例上启用自动内存管理，即使 memory_target未明确设置该参数也是如此。oracle 强烈建议对 oracle asm 使用自动内存管理。
+  ```sql
+  SYS@+ASM()> show parameter target
+   NAME                                 TYPE        VALUE
+   ------------------------------------ ----------- ------------------------------
+   memory_max_target                    big integer 1076M
+   memory_target                        big integer 1076M
+   pga_aggregate_target                 big integer 0
+   sga_target                           big integer 0
+  ```
+- **DB_UNIQUE_NAME**：默认值是+ASM，它是群集中或单个节点上ASM实例组的唯一名称。
+- **ASM_POWER_LIMIT**：为确保重新平衡操作不干扰正在进行的用户I/O，可用ASM_POWER_LIMIT参数控制重新平衡操作发生的速度。对于Oracle Database 12c，其值的范围是0~1024（在Oracle Database 11g中，除非使用11.2.0.2版本而且将COMPATIBLE.ASM磁盘组属性设置为11.2.0.2或更高，值范围是1~11），1024是最大可能的值；默认值是1（较低的I/O开销）。因为这是动态参数，所以可在日间将其设为较低的值，而在夜间必须进行磁盘重新平衡操作时，将其设为较高的值。
+- **ASM_DISKSTRING**：参数指定一个或多个字符串，这些字符串与操作系统相关，用于限制可用于创建磁盘组的磁盘设备。如果该值为NULL，则ASM实例可见的所有磁盘将潜在地成为创建磁盘组的候选项。参数的值是多少，取决于os中你将asm磁盘挂在哪里。
+  ```sql
+  SYS@+ASM()> show parameter asm_diskstring
+   NAME                                 TYPE        VALUE
+   ------------------------------------ ----------- ------------------------------
+   asm_diskstring                       string      /dev/sd*
+  ```
+- **ASM_DISKGROUPS**：参数指定一个包含磁盘组名称的列表，可以在启动时由ASM实例自动安装，或者通过ALTER DISKGROUP ALL MOUNT命令安装。即使在实例启动时该列表为空，也可手动安装任何已有的磁盘组。
+- **LARGE_POOL_SIZE**：参数可用于普通实例和ASM实例，然而对于ASM实例而言，使用这种池有一些区别。所有的内部ASM程序包都从该池中执行，因此，对于单一实例，应将该参数的默认值至少设置为12MB；对于RAC实例，应将该参数的默认值至少设置为16MB。
+- **ASM_PREFERRED_READ_FAILURE_GROUPS**：是Oracle Database 11g中新增的参数，它是一个故障组列表，包含使用群集化的ASM实例时给定数据库实例的首选故障组。不同的实例可以有不同的参数值：每个实例可指定距离实例的节点最近的故障组（例如，服务器的本地磁盘上的故障组），从而提高性能。
+- **DIAGNOSTIC_DEST**：指定为实例诊断所在的目录。Oracle ASM 实例的默认值是 Oracle Grid Infrastructure 安装的$ORACLE_BASE 目录。
+  ```sql
+  SYS@+ASM()> show parameter diag
+   NAME                                 TYPE        VALUE
+   ------------------------------------ ----------- ------------------------------
+   diagnostic_dest                      string      /u01/app/grid
+  ```
+
+**三、ASM实例的启动和关闭**
+
+ASM实例的启动非常类似于数据库实例，除了**STARTUP命令默认为STARTUP MOUNT**。由于没有安装任何控制文件、数据库或数据字典，因此系统将安装ASM磁盘组而不是数据库。命令STARTUP NOMOUNT启动实例，但不安装任何ASM磁盘。此外，可指定STARTUP RESTRICT，临时防止数据库实例连接到ASM实例以安装磁盘组。
+
+**注意**：即使ASM实例处于MOUNT状态，STATUS列也设置为STARTED而非MOUNTED，这与LUCDB实例中的情形一样。
+
+在ASM实例上执行SHUTDOWN命令，相当于在使用ASM实例的任何数据库实例上执行相同的SHUTDOWN命令。在ASM实例完成关闭前，它等待所有相关的数据库关闭。这种情况的唯一例外是，如果在ASM实例上使用SHUTDOWN ABORT命令，将最终迫使所有依赖的数据库执行SHUTDOWN ABORT。对于共享磁盘组的多个ASM实例，例如在RAC（实时应用群集）环境中，一个ASM实例故障不会造成数据库实例失败。此时，另一个ASM实例可执行失败实例的恢复操作。
+
+**注意**：直接关闭ASM实例时，其他普通实例会自动关闭。因此，如果需要关闭asm实例，建议先手动关闭其他实例，然后再执行关闭asm实例。
+
+```sql
+SYS@+ASM()> shutdown immediate;
+ASM diskgroups dismounted
+ASM instance shutdown
+SYS@+ASM()> startup;
+ASM instance started
+
+Total System Global Area 1137173320 bytes
+Fixed Size                  8905544 bytes
+Variable Size            1103101952 bytes
+ASM Cache                  25165824 bytes
+ASM diskgroups mounted
+
+SYS@+ASM()> select status from v$instance;
+STATUS
+------------
+STARTED
+
+SYS@+ASM()> select open_mode from v$database;
+select open_mode from v$database
+                      *
+ERROR at line 1:
+ORA-01507: database not mounted
+```
+
+### 4.2.4 ASM动态性能视图
+
+一些新的动态性能视图与ASM实例关联，下图包含常见的与ASM相关的动态性能视图。
+
+![Alt text](image-3.png)
+
+查询动态性能视图常用脚本：
+
+```sql
+--查看磁盘组
+SELECT name, type,total_mb, free_mb,required_mirror_free_mb, usable_file_mb FROM V$ASM_DISKGROUP;
+
+--查看磁盘组的属性
+set linesize 200
+col value format a40
+col name format a40
+select dg.name as diskgroup, a.name as name,a.value as value,read_only 
+  from v$asm_diskgroup dg,v$asm_attribute a 
+ where dg.name = 'DATA' 
+   and a.name not like 'template%' 
+   and dg.group_number = a.group_number;
+
+--查看asm磁盘
+col failgroup form a20
+select group_number,disk_number,name,failgroup,create_date,path from v$asm_disk;
+
+--查看磁盘和磁盘组的对应关系
+SELECT SUBSTR(d.name,1,16) AS asmdisk, d.mount_status, d.state,dg.name AS diskgroup 
+  FROM V$ASM_DISKGROUP dg, V$ASM_DISK d
+ WHERE dg.group_number = d.group_number;
+```
+
+### 4.2.5 ASM文件名格式
+
+所有ASM文件都是Oracle管理文件（OMF），因此大多数管理功能并不需要磁盘组中实际文件名的细节。删除ASM磁盘组中的对象时，将自动删除对应的文件。某些命令将提供实际的文件名，如ALTER DATABASE BACKUP CONTROLFILE TO TRACE；以及一些数据字典和动态性能视图也可以提供实际的文件名，例如，动态性能视图V$DATAFILE显示每个磁盘组中的实际文件名。
+
+```sql
+SYS@lucdb(startup;)> col NAME for a80
+SYS@lucdb(startup;)> select file#,name,blocks from v$datafile;
+
+     FILE# NAME                                                                                 BLOCKS
+---------- -------------------------------------------------------------------------------- ----------
+         1 +DATA/LUCDB/DATAFILE/system.257.1149473935                                           117760
+         3 +DATA/LUCDB/DATAFILE/sysaux.258.1149473989                                            98560
+         4 +DATA/LUCDB/DATAFILE/undotbs1.259.1149474015                                          43520
+         5 +DATA/LUCDB/86B637B62FE07A65E053F706E80A27CA/DATAFILE/system.266.1149474347           34560
+         6 +DATA/LUCDB/86B637B62FE07A65E053F706E80A27CA/DATAFILE/sysaux.267.1149474347           39680
+         7 +DATA/LUCDB/DATAFILE/users.260.1149474015                                               640
+         8 +DATA/LUCDB/86B637B62FE07A65E053F706E80A27CA/DATAFILE/undotbs1.268.1149474347         12800
+         9 +DATA/LUCDB/06FD69A5A73D1F71E063C983A8C0C4A6/DATAFILE/system.272.1149475035           37120
+        10 +DATA/LUCDB/06FD69A5A73D1F71E063C983A8C0C4A6/DATAFILE/sysaux.273.1149475035           46080
+        11 +DATA/LUCDB/06FD69A5A73D1F71E063C983A8C0C4A6/DATAFILE/undotbs1.271.1149475035         12800
+        12 +DATA/LUCDB/06FD69A5A73D1F71E063C983A8C0C4A6/DATAFILE/users.275.1149475045              640
+        14 +DATA/LUCDB/06FD69A5A73D1F71E063C983A8C0C4A6/DATAFILE/ts_test001.dbf                    128
+        47 +DATA/lucdb/pdb1/datafile/lu9up01.dbf                                                  1280
+        49 +DATA/lucdb/pdb1/datafile/dmarts.dbf                                                   2560
+
+14 rows selected.
+```
+
+ASM文件名有6种不同格式，下面分别介绍不同的格式以及使用它们的环境。或者作为对已有文件的引用，或者用于单个文件和多个文件的创建操作期间。
+
+**一、完全限定的名称**
+
+完全限定的ASM文件名只在引用已有文件时使用。完全限定的ASM文件名具有如下格式：
+
+```sql
++<group>/<dbname>/<file type>/<tag>.<file>.<incarnation>
+```
+
+其中，group是磁盘组名，dbname是文件所属的数据库，file type是Oracle文件类型，tag是文件类型特有的信息，file.incarnation确保唯一性。下面是USER表空间的ASM文件示例：
+
+```sql
++DATA/LUCDB/DATAFILE/users.260.1149474015
+```
+
+磁盘组名是+DATA，数据库名是LUCDB，它是USER表空间的数据文件。如果决定创建USERS表空间的另一个ASM数据文件，则文件编号／具体名称对260.1149474015可确保唯一性。
+
+**二、数字名称**
+
+数字名称只在引用已有的ASM文件时使用。这允许仅通过磁盘组名和文件编号／具体名称对来引用已有的ASM文件。上面示例中ASM文件的数字名称是：
+
+```SQL
++DATA.260.1149474015
+```
+
+**三、别民**
+
+在引用已有的对象或创建单个ASM文件时，可使用别名。使用ALTER DISKGROUP ADD ALIAS命令，可为已有的或新的ASM文件创建更易读懂的名称，并且很容易与普通的ASM文件名区分，因为别名的结尾没有包含点的数字对（文件编号／具体名称对），如下所示：
+
+```SQL
+SYS@+ASM()> alter diskgroup data add directory '+data/purch';
+Diskgroup altered.
+
+SYS@+ASM()> alter diskgroup data add alias '+data/purch/users.dbf' for '+DATA/LUCDB/DATAFILE/users.260.1149474015';
+Diskgroup altered.
+
+ASMCMD> ls +data/purch
+users.dbf
+
+SYS@+ASM()> col name for a20
+SYS@+ASM()> select * from v$asm_alias where name = 'users.dbf';
+
+NAME                 GROUP_NUMBER FILE_NUMBER FILE_INCARNATION ALIAS_INDEX ALIAS_INCARNATION PARENT_INDEX REFERENCE_INDEX A S     CON_ID
+-------------------- ------------ ----------- ---------------- ----------- ----------------- ------------ --------------- - - ----------
+users.dbf                       1         260       1149474015        1219                 7     16778435        33554431 N N          0
+```
+
+**四、具有模板名称的别名**
+
+具有模板的别名只在创建新的ASM文件时使用。创建新的ASM文件时，模板提供了指定文件类型和标志的简略方式。下面是使用+DATA磁盘组中新表空间的模板的一个别名示例：
+
+```sql
+SYS@lucdb(CDB$ROOT)> create tablespace users2 datafile '+data(datafile)';
+
+Tablespace created.
+
+SYS@lucdb(CDB$ROOT)> select file_name,tablespace_name from dba_data_files where tablespace_name like 'USER%';
+
+FILE_NAME                                          TABLESPACE_NAME
+-------------------------------------------------- ------------------------------------------------------------
++DATA/LUCDB/DATAFILE/users.260.1149474015          USERS
++DATA/LUCDB/DATAFILE/users2.282.1153528813         USERS2
+
+SYS@lucdb(CDB$ROOT)> col name for a21
+SYS@lucdb(CDB$ROOT)> select * from v$asm_alias where name = 'USERS2.282.1153528813';
+NAME                  GROUP_NUMBER FILE_NUMBER FILE_INCARNATION ALIAS_INDEX ALIAS_INCARNATION PARENT_INDEX REFERENCE_INDEX AL SY     CON_ID
+--------------------- ------------ ----------- ---------------- ----------- ----------------- ------------ --------------- -- -- ----------
+USERS2.282.1153528813            1         282       1153528813         271                 3     16777481        33554431 N  Y           0
+```
 
 
-### 4.2. 准备 ASM 磁盘
+**五、不完整名称**
+
+不完整的文件名格式可用于单文件创建或多文件创建操作。可以只指定磁盘组名，并根据文件类型使用默认的模板，如下所示：
+
+```sql
+SYS@lucdb(CDB$ROOT)> select file_name,tablespace_name from dba_data_files where tablespace_name = 'USERS2';
+FILE_NAME                                          TABLESPACE_NAME
+-------------------------------------------------- ------------------------------------------------------------
++DATA/LUCDB/DATAFILE/users2.282.1153529039         USERS2
+```
+
+**六、具有模板的不完整名称**
+
+和不完整的ASM文件名一样，具有模板的不完整文件名可用于单文件创建或多文件创建操作。无论实际的文件类型是什么，模板名都可确定文件的特征。下面的示例创建一个表空间，但对这个新的表空间使用联机日志文件的条带化和镜像特征（细密条带化）代替了数据文件的属性（粗糙条带化）：
+
+```sql
+SYS@lucdb(CDB$ROOT)> create tablespace users2 datafile '+data(onlinelog)';
+Tablespace created.
+
+SYS@lucdb(CDB$ROOT)> select file_name,tablespace_name from dba_data_files where tablespace_name = 'USERS2';
+FILE_NAME                                          TABLESPACE_NAME
+-------------------------------------------------- ------------------------------------------------------------
++DATA/LUCDB/DATAFILE/users2.282.1153529157         USERS2
+```
+
+**七、自定义名称**
+
+为方便管理和区分数据文件，可以使用自定义名称创建数据文件：
+
+```sql
+SYS@lucdb(CDB$ROOT)> create tablespace users2 datafile '+DATA/LUCDB/DATAFILE/users02.dbf' size 1m;
+Tablespace created.
+
+SYS@lucdb(CDB$ROOT)> col file_name for a50
+SYS@lucdb(CDB$ROOT)> select file_name,tablespace_name from dba_data_files where tablespace_name like 'USER%';
+FILE_NAME                                          TABLESPACE_NAME
+-------------------------------------------------- ------------------------------------------------------------
++DATA/LUCDB/DATAFILE/users.260.1149474015          USERS
++DATA/LUCDB/DATAFILE/users02.dbf                   USERS2
+```
+
+### 4.2.6 ASM文件类型和模板
+
+除了操作系统可执行文件外，ASM支持数据库使用的所有文件类型。
+
+下图含ASM文件类型的完整列表，“ASM文件类型”和“标志”列是针对前面的ASM文件命名约定所介绍的内容：
+
+![Alt text](image-4.png)
+
+下图介绍了上图的最后一列中所引用的默认ASM文件模板：
+
+![Alt text](image-5.png)
+
+### 4.2.7 管理ASM磁盘组
+
+**使用ASM磁盘组具有诸多优点：提升I/O性能、增加可用性、简化将磁盘添加到磁盘组或添加全新的磁盘组，从而允许在相同的时间内管理更多的数据库**。理解磁盘组的组成部分并正确配置磁盘组，是成功DBA的重要目标。
+
+**一、磁盘组的体系结构**
+
+磁盘组是作为一个单位管理的物理磁盘的集合。作为磁盘组一部分的每个ASM磁盘都有ASM磁盘名，可由DBA分配该磁盘名，也可在将该磁盘分配给磁盘组时自动指定磁盘名。
+
+使用粗糙条带化或细密条带化，在磁盘上对磁盘组中的文件条带化。粗糙条带化以1MB为单位将文件扩展到所有磁盘。粗糙条带化适用于具有高度并发的小I/O请求的系统，如OLTP环境。而细密条带化以128KB为单位扩展文件，它适用于传统的数据仓库环境或具有较低并发性的OLTP系统，可以最大化单个I/O请求的响应速度。
+
+**二、磁盘组镜像和故障组**
+
+在定义磁盘组中的镜像类型之前，必须将磁盘分组到故障组中。**故障组是磁盘组中的一个或多个磁盘，这些磁盘共享常见的资源，如磁盘控制器，它的故障将造成磁盘组无法使用整个磁盘集**。大多数情况下，ASM实例不知道给定磁盘的硬件和软件相关性。因此，**除非专门将一个磁盘分配给故障组，否则磁盘组中的每个磁盘都分配给它自己的故障组**。即，如果asm磁盘不分配故障组，则asm自身就是一个故障组。
+
+一旦定义了故障组，就可以定义磁盘组的镜像。可用于磁盘组中的故障组的数量可以限制可用于磁盘组的镜像类型。有3种可用的镜像类型：外部冗余（External）、普通冗余（Normal）和高度冗余（High）。
+
+- **外部冗余（External）**：外部冗余只需要一个磁盘位置，并假设磁盘对于正在进行的数据库操作不是至关重要的，或者使用高可用性的硬件（例如RAID控制器）在外部管理磁盘。
+- **普通冗余（Normal）**：普通冗余提供双向镜像，并且要求磁盘组中至少有两个故障组。故障组中的一个磁盘产生故障不会造成磁盘组的任何停机时间或数据丢失，只是对磁盘组中对象的查询有一些性能上的影响。当故障组的所有磁盘都处于联机状态时，读性能一般会得到提高，因为请求的数据在多个磁盘上可用。
+- **高度冗余（High）**：高度冗余提供三向镜像，并要求磁盘组中至少有3个故障组。对于数据库用户来说，任意两个故障组中的磁盘产生故障基本上不会有明显的表现，如同在普通冗余镜像中那样。
+
+镜像管理的级别非常低。被镜像的是盘区而非磁盘。此外，每个磁盘同时具有自身主要的和镜像的（次要的和第三位的）盘区。虽然在盘区级别管理镜像会带来少量的系统开销，但它具有如下优点：将负载从失败的磁盘扩展到所有其他磁盘，而不是一个磁盘。
+
+**三、磁盘组的动态重新平衡**
+
+改变磁盘组的配置时，无论添加或删除故障组或故障组中的磁盘，都将自动进行动态的重新平衡，按比例将数据从磁盘组的其他成员重新分配到磁盘组的新成员。当数据库联机并且用户可使用该数据库时，这种重新平衡就会发生。通过将初始参数ASM_POWER_LIMIT的值调整为较低的值，可控制对正在进行的数据库I/O的任何影响。
+
+动态重新平衡不仅可免除标识磁盘组中热点这种繁杂的、通常易出错的任务，也提供了将整个数据库从一组较慢的磁盘迁移到一组较快磁盘的自动方法，同时整个数据库保持联机。较快的磁盘作为已有磁盘组中新的故障组和较慢的磁盘一起添加，并自动进行重新平衡。重新平衡操作完成后，删除包含较慢磁盘的故障组，保留只有较快磁盘的磁盘组。为使这一操作更快，可在同一ALTER DISKGROUP命令中启动ADD和DROP操作。
+
+示例：
+
+```sql
+SYS@lucdb(CDB$ROOT)> col failgroup form a20
+SYS@lucdb(CDB$ROOT)> select group_number,disk_number,name,failgroup,create_date,path from v$asm_disk;
+
+GROUP_NUMBER DISK_NUMBER NAME                  FAILGROUP            CREATE_DATE         PATH
+------------ ----------- --------------------- -------------------- ------------------- ------------------------------
+           2           2 FRA_0002              FRA_0002             2023-10-15 21:54:01 /dev/sdj1
+           2           3 FRA_0003              FRA_0003             2023-10-21 16:21:12 /dev/sdk1
+           1           4 DATA_0004             DATA_0004            2023-10-06 02:13:14 /dev/sdh1
+           2           1 FRA_0001              FRA_0001             2023-10-05 21:49:22 /dev/sdf1
+           2           0 FRA_0000              FRA_0000             2023-10-05 21:49:22 /dev/sdg1
+           1           3 DATA_0003             DATA_0003            2023-10-05 21:31:27 /dev/sde1
+           1           5 DATA_0005             DATA_0005            2023-10-07 21:28:52 /dev/sdi1
+           1           0 DATA_0000             DATA_0000            2023-10-05 21:31:27 /dev/sdb1
+           1           2 DATA_0002             DATA_0002            2023-10-05 21:31:27 /dev/sdd1
+           1           1 DATA_0001             DATA_0001            2023-10-05 21:31:27 /dev/sdc1
+
+10 rows selected.
+```
+
+在10个可用于ASM磁盘，10个磁盘都被分配给两个磁盘组DATA和FRA，每个都在自己的故障组中。
+
+可从视图V$ASM_DISKGROUP中获得磁盘组名：
+
+```sql
+SYS@lucdb(CDB$ROOT)> select group_number,name,type,total_mb,free_mb from v$asm_diskgroup;
+
+GROUP_NUMBER NAME                  TYPE           TOTAL_MB    FREE_MB
+------------ --------------------- ------------ ---------- ----------
+           1 DATA                  EXTERN             6120       1468
+           2 FRA                   EXTERN             6128        352
+```
+
+注意，如果有大量ASM磁盘和磁盘组，可在GROUP_NUMBER列上连接两个视图，并且通过GROUP_NUMBER过滤查询结果。同时，从V$ASM_DISKGROUP中看到，两个磁盘组都是由两个磁盘组成的EXTERN REDUNDANCY组。
+
+接下来介绍创建操作：
+
+1. 第一步是创建磁盘组：
+
+   ```sql
+   create diskgroup data2 high redundancy
+      failgroup fg1 disk '/dev/sdj1' name d2a
+      failgroup fg2 disk '/dev/sdk1' name d2b
+      failgroup fg3 disk '/dev/sdl1' name d2c
+      failgroup fg4 disk '/dev/sdm1' name d2d;
+
+    Diskgroup created.
+   ```
+
+   如果创建错了，可以用以下脚本删除磁盘组：
+
+   ```sql
+   drop diskgroup data2;
+   ```
+
+   如果磁盘组有任何不同于磁盘组元数据的数据库对象，则必须在DROP DISKGROUP命令中指定INCLUDING CONTENTS子句。这是额外的安全措施，可确保不会无意中删除具有数据库对象的磁盘组。
+
+2. 完成新磁盘组的配置后，可通过数据库实例创建新磁盘组中的表空间：
+   
+   ```sql
+   create tablespace users2 datafile '+DATA2';
+    Tablespace created.
+   ```
+
+   因为ASM文件是Oracle管理文件（OMF），所以在创建表空间时不需要指定其他任何数据文件特征。
+
+
+**四、磁盘组快速镜像重新同步**
+
+镜像磁盘组中的文件可提高性能和可用性。但当修理磁盘组中的故障磁盘并将它重新联机时，重新镜像整个新磁盘会很费时间。有些情况下，由于磁盘控制器故障，需要使磁盘组中的某个磁盘脱机，此时并不需要对整个磁盘重新镜像，只有在故障磁盘停机期间发生改变的数据需要重新同步。因此，可使用Oracle Database 11g中引入的ASM快速镜像重新同步特性。
+
+要实现快速镜像重新同步，需要设置时间窗口，在此时间窗口内，当短暂的计划内或计划外故障发生时，ASM并不自动删除磁盘组中的磁盘。在此短暂故障期间，ASM跟踪所有发生改变的数据块，当不可用的磁盘重新联机时，只需重新镜像改变的数据块，而不需要重新镜像整个磁盘。
+
+要为DATA磁盘组设置时间窗口，必须先将rdbms实例和ASM实例的磁盘组的兼容性级别设置为19.0.0或更高（只需要对磁盘组设置一次）：
+
+```sql
+SYS@+ASM()> alter diskgroup data set attribute 'compatible.asm' = '19.0.0.0.0';
+Diskgroup altered.
+SYS@+ASM()> alter diskgroup data set attribute 'compatible.rdbms' = '19.0.0.0.0';
+Diskgroup altered.
+
+SYS@lucdb(CDB$ROOT)> col COMPATIBILITY for a20
+SYS@lucdb(CDB$ROOT)> col DATABASE_COMPATIBILITY for a30
+SYS@lucdb(CDB$ROOT)> select GROUP_NUMBER,NAME,COMPATIBILITY,DATABASE_COMPATIBILITY from v$asm_diskgroup;
+
+GROUP_NUMBER NAME                  COMPATIBILITY        DATABASE_COMPATIBILITY
+------------ --------------------- -------------------- ------------------------------
+           1 DATA                  19.0.0.0.0           10.1.0.0.0
+           2 FRA                   19.0.0.0.0           10.1.0.0.0
+```
+
+对RDBMS实例和ASM实例使用较高兼容性级别的唯一缺点是，只有版本号为19.0.0.0.0或更高的其他实例才能访问此磁盘组。
+
+接下来，设置磁盘组属性DISK_REPAIR_TIME，如下所示：
+
+```sql
+ASMCMD> lsattr -G data -l disk_repair_time
+Name              Value
+disk_repair_time  12.0h
+
+SYS@+ASM()> alter diskgroup data set attribute 'disk_repair_time' = '2.5h';
+Diskgroup altered.
+
+ASMCMD> lsattr -G data -l disk_repair_time
+Name              Value
+disk_repair_time  2.5h
+```
+
+默认的磁盘修理时间是3.6小时，这对于大多数计划内和计划外的短暂停机来说应该绰绰有余。
+
+一旦磁盘重新联机，则运行此命令，通知ASM实例,磁盘DATA_0001重新联机：
+
+```sql
+SYS@+ASM()> alter diskgroup data online disk data_0001;
+Diskgroup altered.
+```
+
+此命令启动后台进程，将磁盘组中剩余磁盘上所有改变的盘区复制到现在重新联机的磁盘DATA_0001。不过，如果磁盘组没有设置多磁盘的故障组，此命令将会报错，ORA-15067: command or option incompatible with diskgroup redundancy。
+
+**五、改变磁盘组**
+
+可向磁盘组中添加或从磁盘组中删除磁盘，也可改变磁盘组的大多数特征，而不需要重新创建磁盘组或影响磁盘组中对象上的用户事务。将磁盘添加到磁盘组时，需要把新的磁盘格式化以用于磁盘组中，然后在后台执行重新平衡操作。本章前面提及，通过初始参数ASM_POWER_LIMIT可控制重新平衡的速度。
+
+假定决定将最近可用的裸磁盘添加到磁盘组，以改进磁盘组DATA的I/O特征，具体如下：
+
+```sql
+SYS@+ASM()> alter diskgroup data add disk '/dev/sdi1' rebalance power 11;
+Diskgroup altered.
+
+--或
+SYS@+ASM()> alter diskgroup data add failgroup d1fg3 disk '/dev/sdi1' name d1c;
+Diskgroup altered.
+```
+
+该命令立刻返回，并在后台进行格式化和重新平衡。然后，通过检查V$ASM_OPERATION视图：
+```sql
+SYS@+ASM()> select group_number,operation,state,power,actual,sofar,est_work,est_rate,est_minutes from v$asm_operation;
+```
+
+可以根据est_minutes估计完成重新平衡操作用时，可决定给重新平衡操作分配资源多少，并改变当前重新平衡操作的功率限制：
+
+```sql
+SYS@+ASM()> alter diskgroup data rebalance power 100;
+Diskgroup altered.
+```
+
+其他常用命令：
+
+![Alt text](image-6.png)
+
+**六、使用asmcmd命令**
+
+asmcmd实用程序是Oracle 10g版本2的新增特性，它是一个命令行实用工具，提供了一种简单方法，可使用类似于Linux shell命令（如ls和mkdir）的命令集，浏览和维护ASM磁盘组中的对象。ASM实例所维护对象的分层性质适于采用类似Linux文件系统中浏览和维护文件所使用的命令集。
+
+使用asmcmd前，务必将环境变量ORACLE_BASE、ORACLE_HOME和ORACLE_SID设置为指向ASM实例。对于本章使用的ASM实例，这些环境变量的设置如下：
+
+```sql
+ORACLE_SID=+ASM
+ORACLE_BASE=/u01/app/grid
+ORACLE_HOME=/u01/app/19.0.0/grid
+```
+
+此外，必须以dba组中用户的身份登录到操作系统，因为asmcmd实用程序使用SYSDBA权限连接到数据库。操作系统用户通常是oracle，但也可以是dba组中的其他任何用户。
+
+可采用asmcmd command格式，一次使用一条asmcmd命令，也可在Linux shell提示符下输入“asmcmd”来交互式地启动asmcmd。为获得可用命令列表，可在ASMCMD>提示符下输入“help”，这会得到更多信息。
+
+下表列出了asmcmd命令及其简单说明，注意有些asmcmd命令只在Oracle Database 11g和12c中可用（见中间一列）。
+
+![Alt text](image-7.png)
+
+启动asmcmd命令时，从ASM实例的文件系统的根节点开始。与Linux文件系统不同，根节点不是由前导正斜杠（/）来指明，而由加号（+）来指明，但以下各级目录则使用正斜杠。在此例中，启动asmcmd命令，并查询现有的磁盘组以及所有磁盘组中使用的总磁盘空间：
+
+```sql
+[grid@19c-Grid ~]$ asmcmd
+ASMCMD> ls -l
+State    Type    Rebal  Name
+MOUNTED  EXTERN  N      DATA/
+MOUNTED  EXTERN  N      FRA/
+ASMCMD> du
+Used_MB      Mirror_used_MB
+  10144               10144
+ASMCMD> pwd
++
+ASMCMD>
+```
+
+与Linux shell的ls命令一样，如果想得到此命令检索出来的对象的详细信息，可在ls命令后追加-l参数。ls命令显示了本章所用的ASM实例中的3个磁盘组+DATA、+DATA2和+RECOV。
+
+另外注意，du命令只显示已用的磁盘空间以及跨镜像磁盘组所用的总磁盘空间。要获得每个磁盘组中的空闲空间量，需使用lsdg命令。
+
+下面的示例查找文件名中包含字符串user的所有文件：
+
+```sql
+ASMCMD> find + user*
++DATA/LUCDB/06FD69A5A73D1F71E063C983A8C0C4A6/DATAFILE/USERS.275.1149475045
++DATA/LUCDB/08A2B6DAD15C4155E063C983A8C0B536/DATAFILE/USERS.290.1151284623
++DATA/LUCDB/08A2B6DAD15D4155E063C983A8C0B536/DATAFILE/USERS.292.1151284789
++DATA/LUCDB/DATAFILE/USER02.276.1150835055
++DATA/LUCDB/DATAFILE/USERS.260.1149474015
++DATA/LUCDB/DATAFILE/USERS2.282.1153529157
++DATA/LUCDB/DATAFILE/users02_01.dbf
++DATA/purch/users.dbf
++FRA/LUCDB/06FD69A5A73D1F71E063C983A8C0C4A6/DATAFILE/USERS.260.1150916009
++FRA/LUCDB/DATAFILE/USERS.266.1150916009
+```
+
+注意包含+DATA/purch/users.dbf的这一行：find命令查找所有ASM对象。在此例中，它查找一个别名以及与此模式相匹配的数据文件。
+
+最后可对外部文件系统甚至其他ASM实例进行文件备份。在此例中，使用cp命令将数据库的SPFILE备份到主机文件系统的/tmp目录中：
+
+```sql
+ASMCMD> ls -l
+Type      Redund  Striped  Time             Sys  Name
+DATAFILE  UNPROT  COARSE   NOV 22 00:00:00  N    users.dbf => +DATA/LUCDB/DATAFILE/USERS.260.1149474015
+ASMCMD> cp users.dbf /tmp/backup/users.dbf
+copying +data/purch/users.dbf -> /tmp/backup/users.dbf
+
+[grid@19c-Grid backup]$ pwd
+/tmp/backup
+[grid@19c-Grid backup]$ ll
+total 5128
+-rw-r----- 1 grid oinstall 5251072 Nov 22 02:27 users.dbf
+```
+
+此例也展示了数据库dw的所有数据库文件是如何存储在ASM文件系统中的。看起来这些数据库文件好像存储在传统的主机文件系统中，但实际上是由ASM进行管理的，其所提供的内置性能和冗余特性（为用于Oracle Database 12c，已进行了优化）使DBA可以更轻松地管理数据文件。
+
+### 4.2.3 基于Vmware Workstation新增硬盘，并配置为ASM磁盘
 
 一、关闭虚拟机后，进入虚拟机目录创建将要用于 asm 的磁盘（一般为偶数个，且大小一样）。
 
 ![添加磁盘](./image/image-20.png)
+
+创建新的磁盘组时，从上图中默认模板复制而来的一组ASM文件模板与磁盘组一起保存。因此，可改变单个模板特征，并且只应用于它们驻留的磁盘组。换句话说，磁盘组+DATA中的DATAFILE系统模板可能有默认的粗糙条带化，而磁盘组+DATA2中的DATAFILE模板可能有细密条带化。用户可根据需要在每个磁盘组中创建自己的模板。
 
 二、启动后检查安装后的磁盘情况：
 ```bash
