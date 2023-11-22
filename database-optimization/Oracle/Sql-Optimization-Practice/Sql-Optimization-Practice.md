@@ -2952,11 +2952,11 @@ select * from t1 order by object_id;
    或者清除该字段上的直方图信息：
 
    ```sql
-   --清除当前直方图信息：
-   exec DBMS_STATS.DELETE_COLUMN_STATS('&owner','&tab_name','&col_name',col_stat_type=>'HISTOGRAM');
+   --不收集&col_name字段上的直方图信息(其他字段已有的直方图信息不受影响）
+   exec dbms_stats.set_table_prefs('&owner','&tab_name','method_opt','for columns &col_name size 1');
 
-   --避免下次收集统计信息又恢复：
-   exec dbms_stats.set_table_prefs('&owner','&tab_name','method_opt','for all columns size auto for columns size 1 &col_name');
+   --再一次收集统计信息，清除&col_name字段上的直方图信息（模拟自动收集任务）
+   exec dbms_stats.gather_table_stats('&owner','&table_name');
    ```
 
 2. 12c及以上的版本：
@@ -3095,6 +3095,150 @@ SQL profile固定执行计划有两种方式，手动或者自动。推荐用自
 4. 输入第二个参数：同上sql_id；
 5. 输入第二个参数：好的执行计划的plan_hash_value；
 6. 输入密码，导出SQL profile信息到一个表中。
+
+手动SQL profile参考：[SQL-profile.md](../SQL-profile/SQL-profile.md)
+
+## 4.2 系统迁移导致SQL性能下降
+
+当新系统sql性能下降严重影响业务时，可以在老系统使用coe_xfr_sql_profile.sql脚本将好的执行计划导出（生成sql脚本），然后在新系统执行sql，恢复为好的执行计划。
+
+然后再慢慢分析问题。
+
+很大原因时因为版本问题，或者补丁不一致。系统迁移，不光数据库的大版本要相同，patch也要保持一致。
+
+## 4.3 直方图的限制
+
+对于某些特殊的长字段，例如URL地址、文件的长绝对路径、系统生成的uuid等字符串等，选择性一般挺不错的，但是创建索引缺不起作用。原因如下：
+
+11g及以下的版本，直方图只计算字符串的前32位，如果字段存的是，前面32位都相同，即便后面的值各不相同，也会被认为是同一个值，导致优化器不会使用字段上的索引（不过URL地址、文件路径也一般不会作为索引列，但是uuid是十分有可能的）。
+
+12c及以上的版本，varchar2字符串，直方图信息扩展到可以识别字符串的前64位，如果字段的前面64位都是相同的，一般不会自动收集该字段直方图信息，不影响索引的正常选择使用。如果强制收集了直方图信息，也会导致索引无法被使用。应对方法与11版本相同。
+
+假设我们的数据库版本是11g及以下的版本，直方图只取varchar2字段的前32位，如果完整路径的文件名前面32位是相同的，那么优化器将认为这个字段的NDV只有一个（虽然字段的NUM_DISTINCT可能接近NUM_ROWS，具体表现为**dba_tab_col_statistics 视图的low_value和high_value是相同的**，dba_histograms只有两条记录），就会**错误的使用全表扫描的执行计划**。
+
+初次收集统计信息，HISTOGRAM=NONE，表的字段是没有直方图信息的。当执行过一遍后，如果method_opt= size auto，系统会自动为用过的字段收集直方图信息。
+
+```sql
+create table demo2(col1 varchar2(70));
+insert into demo2 values('1111111111111111111111111111111111');
+insert into demo2 values('1111111111111111111111111111111122');
+insert into demo2 values('1111111111111111111111111111111123');
+insert into demo2 values('1111111111111111111111111111111124');
+insert into demo2 values('1111111111111111111111111111111125');
+insert into demo2 values('1111111111111111111111111111111126');
+insert into demo2 values('1111111111111111111111111111111127');
+insert into demo2 values('1111111111111111111111111111111128');
+insert into demo2 values('1111111111111111111111111111111129');
+insert into demo2 values('1111111111111111111111111111111139');
+commit;
+SYS@XE()> create index idx_demo2_col1 on demo2(col1);
+索引已创建。
+
+--收集统计信息
+SYS@XE()> exec dbms_stats.gather_table_stats('sys','demo2');
+PL/SQL 过程已成功完成。
+
+SYS@XE()> col METHOD_OPT for a40
+SYS@XE()> select dbms_stats.get_prefs('METHOD_OPT','sys','demo2') method_opt from dual;
+
+METHOD_OPT
+----------------------------------------
+FOR ALL COLUMNS SIZE AUTO
+
+SYS@XE()> select table_name,column_name,histogram from dba_tab_col_statistics where table_name='DEMO2' and owner = 'SYS';
+
+TABLE_NAME COLUMN_NAME                                                  HISTOGRAM
+---------- ------------------------------------------------------------ ------------------------------
+DEMO2      COL1                                                         NONE
+
+SYS@XE()> col COLUMN_NAME for a30
+SYS@XE()> col LOW_VALUE for a40
+SYS@XE()> col high_VALUE for a40
+SYS@XE()> select table_name,COLUMN_NAME,low_value,high_value from dba_tab_col_statistics where owner = 'SYS' and table_name = 'DEMO2';
+
+TABLE_NAME COLUMN_NAME                    LOW_VALUE                                HIGH_VALUE
+---------- ------------------------------ ---------------------------------------- ----------------------------------------
+DEMO2      COL1                           3131313131313131313131313131313131313131 3131313131313131313131313131313131313131
+                                          313131313131313131313131                 313131313131313131313131
+
+```
+
+初次执行sql：
+
+```sql
+SYS@XE()> select * from demo2 where col1 = '1111111111111111111111111111111139';
+
+COL1
+--------------------------------------------------------------------------------------------------------------------------------------------
+1111111111111111111111111111111139
+
+SYS@XE()> select * from table(dbms_xplan.display_cursor());
+
+PLAN_TABLE_OUTPUT
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+-------------------------------------------
+SQL_ID  5a72g2uybydwy, child number 0
+-------------------------------------
+select * from demo2 where col1 = '1111111111111111111111111111111139'
+
+Plan hash value: 3015143637
+
+-----------------------------------------------------------------------------------
+| Id  | Operation        | Name           | Rows  | Bytes | Cost (%CPU)| Time     |
+-----------------------------------------------------------------------------------
+|   0 | SELECT STATEMENT |                |       |       |     1 (100)|          |
+|*  1 |  INDEX RANGE SCAN| IDX_DEMO2_COL1 |     1 |    35 |     1   (0)| 00:00:01 |
+-----------------------------------------------------------------------------------
+
+Predicate Information (identified by operation id):
+---------------------------------------------------
+
+   1 - access("COL1"='1111111111111111111111111111111139')
+
+
+已选择18行。
+```
+
+再次收集统计信息（模拟自动收集字段的直方图）：
+
+```sql
+SYS@XE()> exec dbms_stats.gather_table_stats('sys','demo2');
+
+PL/SQL 过程已成功完成。
+
+SYS@XE()> select table_name,column_name,histogram from dba_tab_col_statistics where table_name='DEMO2' and owner = 'SYS';
+
+TABLE_NAME COLUMN_NAME                    HISTOGRAM
+---------- ------------------------------ ------------------------------
+DEMO2      COL1                           HEIGHT BALANCED
+```
+
+因为前面的sql使用了col1字段，所以会为字段收集直方图信息HISTOGRAM不为none。
+
+再次执行sql：
+
+```sql
+
+```
+
+
+解决办法是，**用hint强制使用索引**:
+
+```sql
+select /*+index(t index_name)*/ from tab t;
+```
+
+或者**清除该字段上的直方图信息**：
+
+```sql
+--不收集&col_name字段上的直方图信息(其他字段已有的直方图信息不受影响）
+exec dbms_stats.set_table_prefs('&owner','&tab_name','method_opt','for columns &col_name size 1');
+
+--再一次收集统计信息，清除&col_name字段上的直方图信息（模拟自动收集任务）
+exec dbms_stats.gather_table_stats('&owner','&table_name');
+```
+
+## 4.4 
 
 # 5 HINT
 # 6 参数
