@@ -740,6 +740,12 @@ MEMORY_TARGET 用于设置目标内存大小，Oracle 会尝试将内存稳定�
 
 在修改以上两个值时需要特别注意，MEMORY_MAX_TARGET 必须大于或者等于 MEMORY_TARGET。
 
+**修改任何参数，都需要先备份参数文件**：
+
+```sql
+create pfile='/tmp/pfile1' from spfile;
+```
+
 调整内存的参考命令如下：
 
 ```sql
