@@ -14,6 +14,18 @@ SQL Monitor 的应用场景主要针对可能存在性能瓶颈的 SQL 进行监
 
 # 2 获取SQL Monitor Reports
 
+## 方法1
+
+```sql
+select /*+monitor*/* from t a where object_name like 'WD%' and  1=2  and exists (select 1 from t b where a.object_id=b.object_id)
+
+select sql_id,sql_text from v$sql where sql_text like '%monitor%';
+
+SELECT dbms_sqltune.report_sql_monitor(sql_id=>'agvpq597x4u2w',TYPE=>'HTML') FROM DUAL;  --也支持TEXT、XML、ACTIVE等模式
+```
+
+## 方法2
+
 1. 调整窗口
     ```sql
     col status for a15 
