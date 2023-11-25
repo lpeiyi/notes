@@ -2579,7 +2579,387 @@ lrwxrwxrwx 1 root root 7 Oct 15 18:14 /dev/asmdisks/asmdisk10 -> ../sdk1
 注意：作为验收测试的一部分，应该测试所有应用程序接口，并验证它们的输入和输出。
 
 ## 5.2 资源管理
+
+可使用数据库资源管理器（Database Resource Manager）控制数据库用户中系统资源的分配。相对于单独使用操作系统控制，数据库资源管理器为DBA提供了对系统资源分配的更多控制。
+
+### 5.2.1 实现数据库资源管理器
+
+可使用数据库资源管理器将一定比例的系统资源分配给各类用户和工作。例如，可将75%的可用CPU资源分配给联机用户，将剩下的25%CPU资源分配给批处理用户。
+
+以下是创建复杂资源计划所需要的步骤：
+
+1. Create a pending area.
+   
+   在使用数据库资源管理器命令前，必须为工作创建一个“未决区域”。要创建未决区域，可使用DBMS_RESOURCE_MANAGER程序包的CREATE_PENDING_AREA过程。如果没有创建未决区域，则在试图创建资源计划时会收到一条错误消息。完成变更后，使用VALIDATE_PENDING_AREA过程检查新的计划集、子计划集和指令集的有效性。然后就可以提交变更（通过SUBMIT_PENDING_AREA）或清除变更（通过CLEAR_PENDING_ AREA）。
+
+   管理未决区域的过程没有任何输入变量，因此，**创建未决区域**需使用下面的语法：
+
+   ```sql
+   execute dbms_resource_manager.create_pending_area();
+   ```
+
+   创建并管理资源计划和资源消费者组，必须针对会话启用ADMINISTER_RESOURCE_ MANAGER**系统权限**。如果DBA使用WITH ADMIN OPTION，则具有该权限。为将该权限授予非DBA用户，必须执行DBMS_RESOURCE_MANAGER_PRIVS程序包的GRANT_ SYSTEM_ PRIVILEGE过程。下面的示例授予用户lu9up管理数据库资源管理器的能力：
+
+   ```sql
+   execute DBMS_RESOURCE_MANAGER_PRIVS.GRANT_SYSTEM_PRIVILEGE
+      (grantee_name => 'LU9UP',
+      privilege_name => 'ADMINISTER_RESOURCE_MANAGER',
+      admin_option => TRUE);
+   ```
+
+   可通过DBMS_RESOURCE_MANAGER程序包的REVOKE_SYSTEM_PRIVILEGE过程取消LYNDAG的权限。
+
+2. Create, modify, or delete consumer groups.
+   
+   启用ADMINISTER_RESOURCE_MANAGER权限后，可使用DBMS_RESOURCE_MANAGER中的CREATE_CONSUMER_GROUP过程**创建资源消费者组**。CREATE_CONSUMER_GROUP过程的语法如下：
+
+   ```sql
+   CREATE_CONSUMER_GROUP
+      (consumer_group IN VARCHAR2,
+      comment        IN VARCHAR2,
+      cpu_mth        IN VARCHAR2 DEFAULT 'ROUND-ROBIN');
+   ```
+
+   由于将把用户赋给资源消费者组，因此根据用户的逻辑划分来为组提供名称。下面的示例创建一个名为OLTP的资源消费组
+
+   ```sql
+   BEGIN
+      DBMS_RESOURCE_MANAGER.CREATE_CONSUMER_GROUP (
+         CONSUMER_GROUP => 'OLTP',
+         COMMENT => 'OLTP applications');
+   END;
+   /
+   ```
+
+3. Map sessions to consumer groups.
+   
+   你可以使用SET_CONSUMER_GROUP_MAPPING存过将会话分配给资源消费组，可以指定的参数参数如下：
+   
+   ![Alt text](image-13.png)
+   
+   下面将oe用户分配到OLTP资源消费组中：
+
+   ```sql
+   BEGIN
+      DBMS_RESOURCE_MANAGER.SET_CONSUMER_GROUP_MAPPING( 
+         ATTRIBUTE => DBMS_RESOURCE_MANAGER.ORACLE_USER, 
+         VALUE => 'OE', 
+         CONSUMER_GROUP => 'OLTP');
+   END;
+   /
+   ```
+
+4. Create the resource plan.
+   
+   **创建资源计划**，必须使用DBMS_RESOURCE_MANAGER程序包的CREATE_PLAN过程。CREATE_PLAN过程的参数描述如下图：
+
+   ![Alt text](image-8.png)
+
+   **创建计划**时，给计划一个名称（在plan变量中）和一条注释。默认情况下，CPU分配方法将使用“强调”方法，根据百分比分配CPU资源。下面的示例显示了如何创建DEVELOPERS计划：
+
+   ```SQL
+   BEGIN
+      DBMS_RESOURCE_MANAGER.CREATE_PLAN(
+         PLAN => 'DAYTIME',
+         COMMENT => 'More resources for OLTP applications');
+   END;
+   /
+   ```
+
+5. Create resource plan directives.
+   
+   建立了计划和资源消费者组后，就需要**创建资源计划指令**，并将用户赋给资源消费者组。为将指令赋给计划，使用DBMS_RESOURCE_MANAGER程序包的CREATE_PLAN_ DIRECTIVE过程。CREATE_PLAN_DIRECTIVE过程的参数如下（有点多）：
+
+   ![Alt text](image-9.png)
+
+   ![Alt text](image-10.png)
+
+   ![Alt text](image-11.png)
+
+   ![Alt text](image-12.png)
+
+   CREATE_PLAN_DIRECTIVE过程中的多个CPU变量支持创建多层的CPU分配。例如，可分配75%的CPU资源（第1层）给联机用户。在剩余的CPU资源（第2层）中，可分配其中的60%给第二组用户。可将第2层中可用CPU资源的其余40%划分给第3层中的多个组。CREATE_PLAN_DIRECTIVE过程最多支持8层的CPU分配。
+
+   例如，创建一个名为DAYTIME的资源计划指令（假设以及在挂起区创建了DAYTIME计划和OLTP消费组）：
+
+   ```sql
+   BEGIN
+      DBMS_RESOURCE_MANAGER.CREATE_PLAN_DIRECTIVE (
+         PLAN => 'DAYTIME',
+         GROUP_OR_SUBPLAN => 'OLTP',
+         COMMENT => 'OLTP group',
+         MGMT_P1 => 75);
+   END;
+   /
+   ```
+
+   该指令将75%的CPU资源分配给级别1的OLTP消费者组。
+
+   还可以继续创建REPORTING消费组，将级别1剩下的25%的CPU资源分配给REPORTING消费组和其他消费组。创建好后，然后执行下面的指令：
+
+   ```sql
+   BEGIN
+      DBMS_RESOURCE_MANAGER.CREATE_PLAN_DIRECTIVE (
+         PLAN => 'DAYTIME', 
+         GROUP_OR_SUBPLAN => 'REPORTING',
+         COMMENT => 'Reporting group',
+         MGMT_P1 => 15,
+         PARALLEL_DEGREE_LIMIT_P1 => 8,
+         ACTIVE_SESS_POOL_P1 => 4,
+         SESSION_PGA_LIMIT => 20);
+
+      DBMS_RESOURCE_MANAGER.CREATE_PLAN_DIRECTIVE (
+         PLAN => 'DAYTIME', 
+         GROUP_OR_SUBPLAN => 'OTHER_GROUPS',
+         COMMENT => 'This one is required',
+         MGMT_P1 => 10);
+      END;
+      /
+   ```
+
+   在此计划中，对于任何操作，消费者组REPORTING的最大并行度为8，而其他消费者组的并行度均不受限制。此外，REPORTING组最多有4个并发活动会话。每个会话最多可以使用20mb的PGA内存。
+
+
+6. Validate the pending area.
+   
+   在任何时候，如果修改了挂起区，可以使用VALIDATE_PENDING_AREA存过检查新的计划、子计划和指令集的有效性，确定挂起区是否有效。
+
+   ```sql
+   BEGIN
+      DBMS_RESOURCE_MANAGER.VALIDATE_PENDING_AREA();
+   END;
+   /
+   ```
+7. Submit the pending area.
+
+   在验证完成后，调用SUBMIT_PENDING_AREA存过去使修改生效：
+
+   ```sql
+   BEGIN
+      DBMS_RESOURCE_MANAGER.SUBMIT_PENDING_AREA();
+   END;
+   /
+   ```
+
+8. Validating the Pending Area
+
+   可以使用CLEAR_PENDING_AREA存过清除对挂起区的修改，并使挂起区失效：
+
+   ```sql
+   BEGIN
+      DBMS_RESOURCE_MANAGER.CLEAR_PENDING_AREA();
+   END;
+   /
+   ```
+
+   在使用过CLEAR_PENDING_AREA之后，必须重新调用CREATE_PENDING_AREA才能对挂起区进行修改。
+
+
+为在数据库中启用资源管理器，将RESOURCE_MANAGER_PLAN数据库初始参数设置为实例的资源计划的名称。资源计划可具有子计划，因此可在实例中创建多层资源分配。如果未设置RESOURCE_MANAGER_PLAN参数的值，实例就不会执行资源管理。
+
+使用RESOURCE_MANAGER_PLAN初始参数，可动态改变实例，使其使用不同的资源分配计划。例如，可为白天的用户（DAYTIME_USERS）创建一个资源计划，而为批处理用户（BATCH_USERS）创建另一个资源计划。可创建一个作业，在每天早上6:00时执行如下的命令：
+
+```sql
+alter system set resource_manager_plan = 'DAYTIME_USERS';
+```
+
+然后在晚上的一个设置时间，改变消费者组，使批处理用户受益：
+
+
+```sql
+alter system set resource_manager_plan = 'BATCH_USERS';
+```
+
+这样，不需要关闭并重新启动实例就可以改变实例的资源分配计划。
+
+采用这种方式使用多个资源分配计划时，需要确保没有无意中在错误的时间使用错误的计划。例如，如果数据库在调度计划改变时停机，改变计划分配的作业可能就不会执行。这对用户有什么影响？如果使用多个资源分配计划，则需要考虑在错误时间使用错误计划的影响。为避免这种问题，应该努力将使用中的资源分配计划的数量减到最少。
+
+### 5.2.2 调整数据库对象的大小
+
+为数据库对象选择适当的空间分配非常重要。开发人员应在创建第一个数据库对象之前先估计空间需求。然后，可根据实际的使用率统计信息来细化空间需求。下面将介绍表、索引和群集的空间估计方法，以及为PCTFREE和PCTUSED选择适当设置的方法。
+
+注意：在创建表空间时可启动自动段空间管理（Automatic Segment Space Management，ASSM），但不能为已有的表空间启用这个特性。如果正在使用自动段空间管理，Oracle将忽略PCTUSED、FREELISTS和FREELIST GROUPS参数。所有新的表空间都应使用ASSM并在本地管理。
+
+**一、调整对象大小的原因**
+
+调整数据库对象大小主要有以下3个原因：
+
+- 预先分配数据库中的空间，从而最小化将来管理对象空间需求所需要的工作量。
+- 减少由于过多分配空间而浪费的空间。
+- 提高另一个段重用已删除空闲盘区的可能性。
+
+**二、空间计算的黄金规则**
+
+保持空间计算简单、普遍适用，并在整个数据库中保持一致性。相对于执行Oracle可能总是会忽略的、特别详细的空间计算，在这些工作时间中总是可以采用更高效的方法。即使执行最严格的调整大小计算，也无法确定Oracle如何将数据加载到表或索引中。
+
+ **PCTFREE**：为一个块保留的空间百分比，表示数据块在什么情况下可以被insert，默认是10，表示当数据块的可用空间低于10%后，就不可以被insert了，只能被用于update；即：当使用一个block时，在达到pctfree之前，该block是一直可以被插入的，这个时候处在上升期。
+
+  **PCTUSED**：是指当块里的数据低于多少百分比时，又可以重新被insert，一般默认是40,即40%，即：当数据低于40%时，又可以写入新的数据，这个时候处在下降期。
+
+**三、空间计算的基本规则**
+
+Oracle在分配空间时遵循一些内部规则：
+
+- Oracle只分配整个块，而非块的局部。
+- Oracle分配成组的块，而不是单个的块。
+- Oracle可能分配较大的或较小的成组块，这取决于表空间中的可用空闲空间。
+
+**四、盘区大小对性能的影响**
+
+减少表中区的数量不会直接改善性能。有些情况下（例如在并行查询环境中），表中具有多个盘区可以极大地减少I/O争用，并增强性能。无论表中盘区的数量是多少，都需要适当地调整盘区的大小。从Oracle Database 10g开始，如果表空间中的对象大小不同，则应该依赖自动（系统管理的）盘区分配。除非知道每个对象需要的精确空间量，以及盘区的数量和大小，否则在创建表空间时应使用AUTOALLOCATE，如下例所示：
+
+```sql
+create tablespace users2
+   datafile '+DATA' size 100m
+   extent management local autoallocate;
+```
+
+EXTENT MANAGEMENT LOCA子句是CREATE TABLESPACE的默认设置，AUTOALLOCATE是具有本地盘区管理的表空间的默认设置。
+
+Oracle以两种方法从表中读取数据：通过ROWID（通常直接跟在一个索引访问之后）以及通过完整表扫描。如果通过ROWID读取数据，表中的盘区数量就不是影响读取性能的因素。Oracle将从它的物理位置（在ROWID中指定）读取每一行，并且检索数据。
+
+如果通过完整表扫描读取数据，盘区的大小会在很小的程度上影响性能。通过完整表扫描读取数据时，Oracle一次读取多个块。一次读取的块数量通过DB_FILE_MULTIBLOCK_READ_ COUNT数据库设置初始参数进行设置，并受操作系统的I/O缓冲区大小的限制。例如，如果数据库块大小是8KB，操作系统的I/O缓冲区大小为128KB，则可在完整表扫描期间每次最多读取16个块。这种情况下，设置DB_FILE_MULTIBLOCK_READ_COUNT的值大于16不会影响完整表扫描的性能。理想情况下，DB_FILE_MULTIBLOCK_READ_COUNT * BLOCK_SIZE的积应该是1MB。
+
+**五、估计表的空间需求**
+
+可使用DBMS_SPACE程序包的CREATE_TABLE_COST过程来估计表的空间需求。该过程根据如下属性来确定表的空间需求：表空间存储参数、表空间块大小、行数以及平均的行长度。该过程可用于字典管理的表空间和本地管理的表空间。
+
+有两种版本的CREATE_TABLE_COST过程（重载该过程，从而可以通过两种方法使用相同的过程）。第一个版本有4个输入变量：TABLESPACE_NAME、AVG_ROW_SIZE、ROW_COUNT和PCT_FREE，它的输出变量是USED_BYTES和ALLOC_BYTES。第二个版本的输入变量是TABLESPACE_NAME、COLINFOS、ROW_COUNT和PCT_FREE，它的输出变量是USED_BYTES和ALLOC_BYTES。表5-1列出各个变量的描述。
+
+![Alt text](image-14.png)
+
+例如，如果有一个名为USERS的已有表空间，则可估计此表空间中新表所需要的空间。在下面的示例中，用传递给平均行大小、行计数和PCTFREE等参数的值，执行CREATE_TABLE_COST过程。通过DBMS_OUTPUT.PUT_LINE过程定义并显示USED_BYTES和ALLOC_BYTES变量：
+
+![Alt text](image-15.png)
+
+这个PL/SQL块的输出将根据这些变量设置来显示已经使用的和分配的字节。在创建表之前，针对空间设置的多种组合，可方便地计算出期望的空间利用率。下面是前面该例的输出：
+
+```sql
+Used bytes: 66589824
+Allocated bytes: 66589824
+PL/SQL procedure successfully completed.
+```
+
+**六、估计索引的空间需求**
+
+同样，可使用DBMS_SPACE程序包的CREATE_INDEX_COST过程来估计索引的空间需求。这一过程根据如下属性来确定表的空间需求：表空间存储参数、表空间块大小、行数以及平均行长度。该过程适用于字典管理的表空间和本地管理的表空间。
+
+CREATE_INDEX_COST过程参数如下：
+
+![Alt text](image-16.png)
+
+对于索引空间估计，输入变量包括创建索引所执行的DDL命令以及本地计划表的名称（如果存在一个这样的表）。索引空间的估计依赖于相关表的统计信息。在开始空间估计过程之前，应该确保这些统计信息是正确的，否则结果就会被曲解。
+
+因为CREATE_INDEX_COST过程根据表的统计信息获得其结果，所以只有在创建、加载和分析表后才可以使用该过程。下面的示例估计BOOKSHELF表上的新索引所需要的空间。表空间的名称是CREATE INDEX命令的一部分，该命令作为DDL变量值的一部分被传递给CREATE_INDEX_COST过程。
+
+![Alt text](image-17.png)
+
+该脚本的输出将为指定的雇员名索引显示已经使用的和分配的字节值：
+
+```sql
+Used bytes = 749
+Allocated bytes = 65536
+PL/SQL procedure successfully completed.
+```
+
+**七、估计合适的PCTFREE值**
+
+PCTFREE值代表每个数据块中保留的用作空闲空间的百分比。当存储在数据块中的行的长度增长时，使用这个空间，数据块中行的长度增长或由于更新以前的NULL字段，或由于将已有的值更新为较长的值。当NUMBER列的精度增加或VARCHAR2列的长度增加时，在更新期间，行的大小会增加（因此需要在数据块中移动行）。
+
+任一个PCTFREE值都不可能适合于所有数据库中的所有表。为简化空间管理，通常选择一组一致的PCTFREE值：
+
+- 对于键值很少改变的索引：2
+- 对于行很少改变的表：2
+- 对于行频繁改变的表：10~30
+
+在行很少改变的情况下，为什么需要维护表或索引中的空闲空间呢？Oracle需要块中的空间来执行块维护功能。如果没有足够可用的空闲空间（例如，为支持在并发插入期间的大量事务头），Oracle将临时分配块的部分PCTFREE区域。应选择支持这种空间分配的PCTFREE值。为给INSERT密集表中的事务头保留空间，应设置INITRANS参数为非默认值（最小为2）。一般来说，PCTFREE区域应该大到足够保存一些数据行。
+
+因为PCTFREE与应用程序中的更新方法紧密联系，所以确定它的设置值是否足够是一个相当简单的过程。PCTFREE设置控制存储在表块中的行数。为查看是否已经正确设置PCTFREE，首先确定块中行的数量。可使用DBMS_STATS包来收集统计信息。如果PCTFREE设置得过低，由于总行数增加，迁移行数将稳定增加。可监控数据库的V$SYSSTAT视图（或自动工作负荷存储库），查看“表读取连续行”动作的增加值，这些表明了数据库针对一行访问多个块的需求。如果整行不能放入空块，或行中的列数超过255，将出现“链接行（Chained row）”。因此，行的一部分存储在第一个块中，行的其余部分存储在后续的一个或多个块中。
+
+当由于PCTFREE区域中的空间不够而移动行时，这种移动称为“行迁移”。行迁移将影响事务的性能。
+
+**八、反向键索引**
+
+在反向键索引（reverse key index）中，值是反向存储的，例如，2201的值存储为1022。
+
+**九、调整位图索引的大小**
+
+如果创建位图索引，Oracle将动态压缩生成的位图。位图的压缩可能会节省实际的存储空间。为估计位图索引的大小，应使用本章前面提供的方法来估计相同列上标准（B-树）索引的大小。计算B-树索引的空间需求后，需要将这个大小除以10才能确定这些列的位图索引最可能的最大尺寸。一般来说，基数低的位图索引在相当的B-树索引大小的2%~10%之间。位图索引的大小将取决于索引列中不同值的可变性和数量。如果位图索引创建在高基数列上，则位图索引占用的空间可能会超过相同列上B-树索引的大小！
+
+注意：位图索引只能用于Oracle企业版和标准版1
+
+**十、调整索引组织表的大小**
+
+索引组织表按主键的顺序存储。索引组织表的空间需求与所有表列上的索引的空间需求几乎相同。空间估计的差别在于计算每一行所使用的空间，因为索引组织表没有RowID。下面的程序清单给出了对索引组织表中每一行的空间需求的计算（注意，该存储估计针对整个行，包括它的外部存储）：
+
+```sql
+Row length for sizing = Average row length + number of columns + number of LOB columns + 2 header bytes
+```
+
+在将CREATE_TABLE_COST过程用于索引组织表时，输入该值作为行长度。
+
+**十一、调整包含大型对象（LOB）的表的大小**
+
+BLOB或CLOB数据类型中的LOB数据通常和主表分开存储。可使用CREATE TABLE命令的LOB子句来指定LOB数据的存储属性，如不同的表空间。在主表中，Oracle存储指向LOB数据的LOB定位器值。在外部存储LOB数据时，控制数据（LOB定位器）的36～86个字节保持在行中内联。Oracle并非总是将LOB数据与主表分开存储。一般来说，只有在LOB数据与LOB定位器值总共超过4000B时，才将LOB数据与主表分开存储。因此，如果存储较短的LOB值，就需要考虑它们对主表存储的影响。如果LOB值少于32 768个字符，在Oracle Database 12c中，就能使用VARCHAR2数据类型而不是LOB数据类型存储数据；但那些VARCHAR2列作为SecureFile LOB在行外存储。
+
+注意：在Oracle Database 12c中，如果设置初始参数MAX_STRING_SIZE=EXTENDED，可将VARCHAR2列长最大定义为32 767字符。
+
+如果LOB的大小等于或小于4000B，并要明确地指定LOB驻留在哪里，则使用CREATE TABLE句的LOB存储子句中的DISABLE STORAGE IN ROW或ENABLE STORAGE IN ROW子句。如果LOB内联存储，且LOB的值起初小于4000B，则它将移动到外部。如果外部LOB变得小于4000B，则仍存储在外部。
+
+**十二、调整分区大小**
+
+可创建表的多个分区。在分区表中，多个单独的物理分区组成表。例如，SALES表可能有4个分区：SALES_NORTH、SALES_SOUTH、SALES_EAST和SALES_WEST。应该使用本章前面描述的调整表大小的方法来调整每个分区的大小，并使用调整索引大小的方法来调整分区索引的大小。
+
+### 5.2.3 使用全局临时表
+
+可创建全局临时表（Global Temporary Table，GTT），在应用程序处理期间保存临时数据。表的数据可以是针对事务的，也可用于某个用户会话期间。当事务或会话完成时，从表中去除该数据。
+
+为创建GTT，可使用CREATE GLOBAL TEMPORARY TABLE命令。为在事务结束时自动删除行，可指定ON COMMIT DELETE ROWS，如下所示：
+
+```sql
+create global temporary table my_temp_table
+(name      varchar2(25),
+street    varchar2(25),
+city      varchar2(25))
+on commit  delete rows;
+```
+
+然后，可在应用程序处理期间将行插入MY_TEMP_TABLE。在提交时，Oracle将截取MY_TEMP_TABLE。为在会话持续期间保留这些行，应指定ON COMMIT PRESERVE ROWS。
+
+从DBA的角度看，需要知道应用程序开发人员是否正在使用这种特性。如果正在使用，则应考虑在处理期间临时表所需要的空间。临时表通常用于改进复杂事务的处理速度，因此可能需要权衡性能优点和空间成本。可在临时表上创建索引，进一步改进处理性能，但这是以增加空间使用率为代价的。
+
+注意：直到第一次在其中插入内容，临时表及其索引才需要空间。当它们不再使用时，则释放分配给它们的空间。另外，如果正在使用PGA_AGGREGATE_TARGET，则Oracle试图在内存中创建表，且根据需要只写到临时空间。
+
 ## 5.3 支持基于抽象数据类型的表
+
+用户定义的数据类型，也称为“抽象数据类型”，是对象-关系数据库应用程序的关键部分。每个抽象数据类型都有相关的构造函数方法，开发人员使用这些方法来操作表中的数据。抽象数据类型定义了数据的结构，例如，ADDRESS_TY数据类型可能包含地址数据的属性，以及操作这种数据的方法。创建ADDRESS_TY数据类型时，Oracle将自动创建名为ADDRESS_TY的构造函数方法。ADDRESS_TY构造函数方法包含匹配数据类型属性的参数，从而便于以数据类型的格式插入新的值。下面将介绍如何创建使用抽象数据类型的表，以及与该实现相关联的大小调整信息和安全性问题。
+
+可创建使用抽象数据类型作为列定义的表。例如，可为地址创建一个抽象数据类型，如下所示：
+
+```sql
+create type address_ty as object
+(street   varchar2(50),
+city       varchar2(25),
+state      char(2),
+zip        number);
+```
+
+一旦创建了ADDRESS_TY数据类型，创建表时就可以使用它作为一种数据类型，如下面的程序清单所示：
+
+```sql
+create table customer
+(name    varchar2(25),
+address  address_ty);
+```
+
+创建抽象数据类型时，Oracle将创建在插入期间使用的构造函数方法。构造函数方法具有和数据类型相同的名称，它的参数是数据类型的属性。在CUSTOMER表中插入记录时，需要使用ADDRESS_TY数据类型的构造函数方法来插入地址值：
+
+```sql
+insert into customer values ('Joe',address_ty('My Street', 'Some City', 'NY', 10001));
+```
+
+使用抽象数据类型会增加表的空间需求，每个使用的数据类型将增加8B的空间需求。如果数据类型包含另一个数据类型，则应针对每个数据类型增加8B。
+
 ## 5.4 停顿并挂起数据库
 ## 5.5 支持迭代开发
 ## 5.6 管理程序包开发
