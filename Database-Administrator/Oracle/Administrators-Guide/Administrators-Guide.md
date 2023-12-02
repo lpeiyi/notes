@@ -2997,6 +2997,32 @@ insert into customer values ('Joe',address_ty('My Street', 'Some City', 'NY', 10
 
 “数据块”是数据库中的最小存储单位。
 
+## 6.3 数据字典视图和动态性能视图
+
+以DBA_开头的数据字典视图具有更多的静态特性，而V$视图则如同期望的那样具有更多的动态特性，并且提供如何在数据库中使用空间的最新统计信息。
+
+**一、DBA_TABLESPACES**
+
+EXTENT_MANAGEMENT列表明表空间是本地管理还是字典管理。从Oracle 10g开始，列BIGFILE表明表空间是小文件表空间还是大文件表空间。
+
+```sql
+col contents form a10
+col tablespace_name form a10
+SYS@lucdb(CDB$ROOT)> select tablespace_name,block_size,contents,extent_management,bigfile from dba_tablespaces;
+
+TABLESPACE BLOCK_SIZE CONTENTS   EXTENT_MANAGEMENT    BIGFIL
+---------- ---------- ---------- -------------------- ------
+SYSTEM           8192 PERMANENT  LOCAL                NO
+SYSAUX           8192 PERMANENT  LOCAL                NO
+UNDOTBS1         8192 UNDO       LOCAL                NO
+TEMP             8192 TEMPORARY  LOCAL                NO
+USERS            8192 PERMANENT  LOCAL                NO
+USERS2           8192 PERMANENT  LOCAL                NO
+
+```
+
+**二、DBA_SEGMENTS**
+
 # 7 使用和撤销表空间管理事务
 # 8 数据库调整
 # 9 In-Memory概述
