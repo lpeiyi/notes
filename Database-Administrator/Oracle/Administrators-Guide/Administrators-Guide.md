@@ -3001,27 +3001,76 @@ insert into customer values ('Joe',address_ty('My Street', 'Some City', 'NY', 10
 
 以DBA_开头的数据字典视图具有更多的静态特性，而V$视图则如同期望的那样具有更多的动态特性，并且提供如何在数据库中使用空间的最新统计信息。
 
-**一、DBA_TABLESPACES**
+## 6.4 空间管理方法学
 
-EXTENT_MANAGEMENT列表明表空间是本地管理还是字典管理。从Oracle 10g开始，列BIGFILE表明表空间是小文件表空间还是大文件表空间。
+### 6.4.4 ASM
+
+使用自动存储管理（ASM）可极大地减少管理数据库中空间的管理性系统开销，因为在为表空间或其他数据库对象分配空间时，DBA只需要指定一个ASM磁盘组。数据库文件自动分布在磁盘组的所有可用磁盘中，在磁盘配置改变时，这种分配会自动更新。
+
+ASM自动将数据文件放在多个磁盘上，从而改进查询和DML语句的性能，这是因为I/O扩展到多个磁盘中。
+
+ASM优于卷管理器的另一个优点是，如果需要将磁盘添加到磁盘组或从磁盘组中删除磁盘，ASM维护操作不需要关闭数据库。
+
+**一、磁盘组冗余**
+
+ASM中的磁盘组是作为实体管理的一个或多个ASM磁盘的集合。不需要关闭数据库，就可以在磁盘组中添加或删除磁盘。在添加或删除磁盘时，ASM自动重新平衡磁盘上的数据文件，从而最大化冗余和I/O性能。
+
+有3种类型的磁盘组：普通冗余、高度冗余和外部冗余。
+
+普通冗余组和高度冗余组需要ASM为存储在组中的文件提供冗余。普通冗余和高度冗余之间的区别在于需要的故障组数量：普通冗余磁盘组一般有两个故障组，高度冗余磁盘组至少有3个故障组。外部冗余需要由不同于ASM的机制（例如，使用第三方RAID存储阵列硬件设备）来提供冗余。
+
+**二、ASM实例**
+
+ASM要求一个专用的Oracle实例，该实例一般与使用ASM磁盘组的数据库在同一节点上。在Oracle实时应用群集（RAC）环境中，RAC数据库中的每个节点都有一个ASM实例。
+
+ASM实例绝对不会挂载数据库，它只协调其他数据库实例的磁盘卷。此外，来自一个实例的所有数据库I/O直接进入磁盘组中的一个磁盘。但是，磁盘组维护在ASM实例中完成，因此，支持ASM实例所需要的内存可以低到275MB；但在生产环境中，通常至少为2GB。
+
+**三、后台进程**
+
+**四、使用ASM创建对象**
+
+在数据库可使用ASM磁盘组之前，必须通过ASM实例创建该磁盘组。
+
+在下面的示例中，创建新的磁盘组LYUP25，管理Linux磁盘卷/dev/hda1、/dev/hda2、/dev/hda3、/dev/hdb1、/dev/hdc1和/dev/hdd4：
 
 ```sql
-col contents form a10
-col tablespace_name form a10
-SYS@lucdb(CDB$ROOT)> select tablespace_name,block_size,contents,extent_management,bigfile from dba_tablespaces;
-
-TABLESPACE BLOCK_SIZE CONTENTS   EXTENT_MANAGEMENT    BIGFIL
----------- ---------- ---------- -------------------- ------
-SYSTEM           8192 PERMANENT  LOCAL                NO
-SYSAUX           8192 PERMANENT  LOCAL                NO
-UNDOTBS1         8192 UNDO       LOCAL                NO
-TEMP             8192 TEMPORARY  LOCAL                NO
-USERS            8192 PERMANENT  LOCAL                NO
-USERS2           8192 PERMANENT  LOCAL                NO
-
+create diskgroup LYUP25 normal redundancy
+ failgroup mir1 disk '/dev/hda1','/dev/hda2','/dev/hda3',
+ failgroup mir2 disk '/dev/hdb1','/dev/hdc1','/dev/hdd4';
 ```
 
-**二、DBA_SEGMENTS**
+指定普通冗余时，必须至少指定两个故障组，以提供在磁盘组中创建的任何数据文件的双向镜像。
+
+**五、UNDO管理的考虑事项**
+
+```sql
+SYS@lucdb(CDB$ROOT)> show parameter UNDO
+
+NAME                                 TYPE                   VALUE
+------------------------------------ ---------------------- ------------------------------
+temp_undo_enabled                    boolean                FALSE
+undo_management                      string                 AUTO
+undo_retention                       integer                900
+undo_tablespace                      string                 UNDOTBS1
+```
+
+UNDO表空间的创建为DBA和普通数据库用户提供了大量优点。对于DBA，不再需要管理回滚段：Oracle在撤消表空间中自动管理所有撤消段。在对某个对象执行一个很长的事务时，除了为数据库阅读程序提供数据库对象的读一致性视图外，撤消表空间还可为用户提供恢复表行的机制。
+
+UNDO_RETENTION参数以秒为单位指定应为闪回查询保留撤消信息的最小时间量。然而，使用过小的撤消表空间，并且大量使用DML，则可能在UNDO_RETENTION指定的时间周期之前就重写一些撤消信息。
+
+动态性能视图V\$UNDOSTAT可帮助峰值处理期间的事务负载正确调整撤消表空间的大小。每10分钟插入一次V$UNDOSTAT中的行，并给出撤消表空间利用率的快照：
+
+```sql
+select to_char(end_time,'yyyy-mm-dd hh24:mi:ss') end_time,
+	   undoblks,ssolderrcnt
+  from v$undostat;
+```
+
+![Alt text](image-18.png)
+
+在本示例中，撤消表空间利用率中的峰值发生在上午9:41和9:51之间，结果是3个查询报告“Snapshot too old”错误。为防止这些错误，撤消表空间应该手动调整大小，或者允许自动扩展。
+
+## 6.5 SYSAUX监控和使用
 
 # 7 使用和撤销表空间管理事务
 # 8 数据库调整
