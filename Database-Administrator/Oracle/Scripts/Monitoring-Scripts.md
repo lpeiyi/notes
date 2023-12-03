@@ -425,6 +425,19 @@ SELECT a.index_name, a.next_extent, a.tablespace_name
 
 如果有记录返回，则表明这些对象的下一个扩展大于该对象所属表空间的最大扩展值，需调整相应表空间的存储参数。
 
+## 9.8 无法分配额外盘区的段
+
+```sql
+select s.tablespace_name, s.segment_name, s.segment_type, s.owner
+  from dba_segments s
+ where s.next_extent >=
+       (select max(f.BYTES)
+          from dba_free_space f
+         where f.TABLESPACE_NAME = s.tablespace_name)
+    or s.extents = s.max_extents
+ order by tablespace_name, segment_name;
+```
+
 # 10 检查 Oracle 数据库性能
 
 ## 10.1 检查数据库的等待事件

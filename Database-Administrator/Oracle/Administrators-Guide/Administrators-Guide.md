@@ -3072,7 +3072,398 @@ select to_char(end_time,'yyyy-mm-dd hh24:mi:ss') end_time,
 
 ## 6.5 SYSAUX监控和使用
 
+## 6.6 归档重做日志文件的管理
+
+## 6.7 内置的空间管理工具
+
+## 6.7.1 段顾问
+
+在表中频繁地插入、更新和删除可能会使表中留下的空间成为碎片。Oracle可在表或索引上执行段收缩。收缩段使段中的空闲空间可用于表空间中的其他段，从而潜在地改善将来在段上的DML操作，因为在段收缩后，DML操作只需要检索较少的块。在回收表中空间方面，段收缩非常类似于联机表重新定义。然而，可在适当位置执行段收缩，而不需要联机表重新定义的额外空间需求。为确定哪些段将从段收缩中受益，可调用段顾问（Segment Advisor）来执行指定段上的增长趋势分析。本小节将在某些可能易于成为存储碎片的段上调用段顾问。
+
+调用段顾问给出建议后，可在DBA_ADVISOR_FINDINGS数据字典视图中看到段顾问所发现的内容。为显示在段顾问推荐收缩操作时收缩段的潜在优点，视图DBA_ADVISOR_ RECOMMENDATIONS提供了推荐的收缩操作以及该操作可以节省的空间，以字节为单位。
+
+下面，使用DBMS_ADVISOR存储过程对HR.EMPLOYEES表执行Segment Advisor：
+
+```sql
+variable id number;
+begin
+ declare
+ name varchar2(100);
+ descr varchar2(500);
+ obj_id number;
+ begin
+ name:='Manual_Employees';
+ descr:='Segment Advisor Example';
+ dbms_advisor.create_task (
+ advisor_name => 'Segment Advisor',
+ task_id => :id,
+ task_name => name,
+ task_desc => descr);
+ 
+ dbms_advisor.create_object (
+ task_name => name,
+ object_type => 'TABLE',
+ attr1 => 'HR',
+ attr2 => 'EMPLOYEES',
+ attr3 => NULL,
+ attr4 => NULL,
+ attr5 => NULL,
+ object_id => obj_id);
+ 
+ dbms_advisor.set_task_parameter(
+ task_name => name,
+ parameter => 'recommend_all',
+ value => 'TRUE');
+ 
+ dbms_advisor.execute_task(name);
+ end;
+end; 
+/
+```
+
+过程DBMS_ADVISOR.CREATE_TASK指定顾问类型，这里是段顾问。该过程向调用程序返回唯一的任务ID以及自动生成的名称，我们可将自己的描述赋予该任务。
+
+使用DBMS_ADVISOR. CREATE_OBJECT标识要分析的对象。对于不同的对象类型，其第二到第六个参数也有所不相同。
+
+使用DBMS_ADVISOR.SET_TASK_PARAMETER，告诉段顾问提供有关该表的所有可能的建议。如果希望关闭对该任务的建议，可将最后一个参数指定为FALSE，而不要指定为TRUE。
+
+最后，使用DBMS_ADVISOR.EXECUTE_TASK过程初始化段顾问任务。一旦完成该工作，就会显示任务的标识符，从而可在适当的数据字典视图中查询结果。
+
+下面查看执行结果。
+
+查看task_id：
+
+```sql
+print id;
+```
+
+检查task是否执行成功：
+
+```sql
+col task_name form a30
+select task_id,task_name, status 
+  from dba_advisor_tasks
+ where owner = 'SYS' 
+   and task_id = :id;
+```
+
+查看Segment Advisor的运行结果：
+
+```sql
+col task_id dorm a7
+col SEGNAME form a20
+col PARTITION form a10
+col TYPE form a10
+col MESSAGE form a30
+col more_info form a30
+col TASK_NAME form a30
+select af.task_id, af.task_name, ao.attr2 segname, ao.attr3 partition, ao.type, af.message,af.more_info
+ from dba_advisor_findings af, dba_advisor_objects ao
+ where ao.task_id = af.task_id
+ and ao.task_id = :id
+ and ao.object_id = af.object_id
+ and ao.owner = 'SYS';
+
+--或
+select owner,task_id,task_name,type,message,more_info
+  from dba_advisor_findings
+ where task_id = :id;
+```
+
+查看建议：
+
+```sql
+select owner,task_id,task_name,benefit_type
+  from dba_advisor_recommendations
+ where task_id = :id;
+```
+
+查看可执行的操作：
+
+```sql
+select owner,task_id,task_name,command,attr1
+  from dba_advisor_actions
+ where task_id = :id;
+```
+
+使用DBMS_SPACE.ASA_RECOMMENDATIONS包查看结果：
+
+```sql
+select tablespace_name, segment_name, segment_type, partition_name,
+recommendations, c1 from
+table(dbms_space.asa_recommendations('FALSE', 'FALSE', 'FALSE'));
+```
+
+### 6.7.2 撤消顾问和自动工作负荷存储库
+
+查看快照：
+
+```sql
+col BEGIN_INTERVAL_TIME form a30
+col END_INTERVAL_TIME form a30
+select a.SNAP_ID,a.BEGIN_INTERVAL_TIME,a.END_INTERVAL_TIME
+  from dba_hist_snapshot a
+ order by a.END_INTERVAL_TIME desc;
+```
+
+执行Undo Advisor Task：
+
+```sql
+variable tid number;
+DECLARE
+ tname VARCHAR2(30);
+ oid NUMBER;
+ START_SNAPSHOT NUMBER := 123;
+ END_SNAPSHOT NUMBER := 124;
+ BEGIN
+ DBMS_ADVISOR.CREATE_TASK('Undo Advisor', :tid, tname, 'Undo Advisor Task');
+ dbms_advisor.create_object (
+  task_name => tname,
+  object_type => 'UNDO_TBS',
+  attr1 => NULL,
+  attr2 => NULL,
+  attr3 => NULL,
+  attr4 => NULL,
+  attr5 => NULL,
+  object_id => oid);
+ DBMS_ADVISOR.SET_TASK_PARAMETER(tname, 'TARGET_OBJECTS', oid);
+ DBMS_ADVISOR.SET_TASK_PARAMETER(tname, 'START_SNAPSHOT', 1);
+ DBMS_ADVISOR.SET_TASK_PARAMETER(tname, 'END_SNAPSHOT', 2);
+ DBMS_ADVISOR.SET_TASK_PARAMETER(tname, 'INSTANCE', 1);
+ DBMS_ADVISOR.EXECUTE_TASK(tname);
+ END;
+/
+```
+
+查看task_id：
+```sql
+print id;
+```
+
+检查task是否执行成功：
+```sql
+col task_name form a30
+select task_id,task_name, status 
+  from dba_advisor_tasks
+ where owner = 'SYS' 
+   and task_id = :id;
+```
+
+查看Segment Advisor的运行结果：
+```sql
+col task_id dorm a7
+col SEGNAME form a20
+col PARTITION form a10
+col TYPE form a10
+col MESSAGE form a30
+col more_info form a30
+col TASK_NAME form a30
+select af.task_id, af.task_name, ao.attr2 segname, ao.attr3 partition, ao.type, af.message,af.more_info
+ from dba_advisor_findings af, dba_advisor_objects ao
+ where ao.task_id = af.task_id
+ and ao.task_id = :tid
+ and ao.object_id = af.object_id
+ and ao.owner = 'SYS';
+
+--或
+select owner,task_id,task_name,type,message,more_info
+  from dba_advisor_findings
+ where task_id = :tid;
+```
+
+查看建议：
+```sql
+select owner,task_id,task_name,benefit_type
+  from dba_advisor_recommendations
+ where task_id = :tid;
+```
+
+
+查看可执行的操作：
+```sql
+select owner,task_id,task_name,command,attr1
+  from dba_advisor_actions
+ where task_id = :tid;
+```
+
+### 6.7.3 索引利用率
+
+如果一个索引根本未使用，则索引占用的空间就可以更好地用于其他地方。如果不需要索引，也可以节省对索引有影响的插入、更新和删除操作的处理时间。可使用动态性能视图V$OBJECT_USAGE监控索引利用率。
+
+索引未在使用。打开对此索引的监控，如下所示：
+
+```sql
+alter index hr.emp_job_ix monitoring usage;
+```
+
+快速查看V$OBJECT_USAGE视图，确保正在监控该索引：
+
+```sql
+select * from v$object_usage;
+```
+
+USED列将告诉我们是否访问该索引以满足查询。在完成了一整天的典型用户活动后，再次查看V$OBJECT_USAGE，然后关闭监控：
+
+```sql
+alter index hr.emp_job_ix nomonitoring usage;
+select * from v$object_usage;
+```
+
+另一种极端是，可能过于频繁地访问索引。如果频繁地插入、更新和删除键值，那么索引在空间利用率方面就会变得低效。下面的命令可用作索引创建之后的基线，然后周期性运行以查看空间利用是否无效：
+
+```sql
+analyze index EMP_EMP_ID_PK validate structure;
+
+select a.pct_used,a.name from index_stats a where a.name = 'EMP_EMP_ID_PK';
+```
+
+pct_used为使用中的索引分配空间的百分比。如果此值较小，则说明索引没有有效地使用其空间，需要重建索引：
+
+```sql
+alter index EMP_EMP_ID_PK rebuild online;
+```
+
+### 6.7.6 用ADR管理警报日志和跟踪文件
+
+自动诊断存储库（Automatic Diagnostic Repository，ADR）是Oracle Database 11g的新增特性，它是系统管理的存储库，用于存储数据库警报日志、跟踪文件以及以前由其他几个初始参数控制的其他所有诊断数据。
+
+## 6.8空间管理脚本
+
+### 6.8.1 无法分配额外盘区的段
+
+```sql
+select s.tablespace_name, s.segment_name, s.segment_type, s.owner
+  from dba_segments s
+ where s.next_extent >=
+       (select max(f.BYTES)
+          from dba_free_space f
+         where f.TABLESPACE_NAME = s.tablespace_name)
+    or s.extents = s.max_extents
+ order by tablespace_name, segment_name;
+```
+
+这些对象存在问题的原因最可能是以下两种：表空间没有用于该段的下一个盘区的空间，或者段已经分配了最大数量的盘区。为解决该问题，DBA可添加另一个数据文件，或者导出段中的数据，并使用更密切匹配增长模式的存储参数重新创建该段，这两种方法都可以扩展表空间。
+
+### 6.8.2 表空间和数据文件已使用的空间和空闲空间
+
 # 7 使用和撤销表空间管理事务
+
+## 7.1 事务基础
+
+事务是作为逻辑单元的SQL DML语句的集合。事务中任何语句的失败都意味着事务中对数据库的其他改动都不应该永久保存到数据库中。一旦事务中的DML语句成功完成，应用程序或SQL*Plus用户就将发出一个COMMIT命令，使这些改动永久化。
+
+## 7.2 UNDO基础
+
+UNDO表空间有助于逻辑事务的回滚。此外，撤消表空间支持大量其他的特性，包括读一致性、各种数据库恢复操作及闪回功能。
+
+### 7.2.1 回滚
+
+当DML命令对表进行改动时，DML命令改变的旧数据值记录在撤消表空间中，即系统管理的撤消段或回滚段中。
+
+回滚整个事务（即没有存储点的事务）时，Oracle使用对应的撤消记录来撤消从事务开始以来DML命令进行的所有改动，释放受影响行上的锁（如果受影响行上有锁的话），并且事务结束。
+
+如果回滚到某一存储点为止的部分事务，Oracle就撤消该存储点后DML命令进行的所有改动。随后的所有存储点都会丢失，释放在该存储点后获得的所有锁，并且事务保持活动。
+
+### 7.2.2 读一致性
+
+所有正在读取受影响行的用户将不会看到行中的任何改动，直到他们在DML用户提交事务后发出一个新的查询。
+
+例如，用户CLOLSEN在10:00开始事务，希望在10:15提交该事务，该事务对EMPLOYEES表进行各种更新和插入。在EMPLOYEES表上每次进行INSERT、UPDATE和DELETE操作时，表的旧值保存在撤消表空间中。当用户SUSANP在10:08针对EMPLOYEES表发出SELECT语句时，除CLOLSEN外，其他任何人都看不到CLOLSEN所做的任何改动，但撤消表空间为SUSANP和所有其他的用户提供了在CLOLSEN进行改动之前的值。即使来自于SUSANP的查询直到10:20才完成，表仍然表现为没有改动过，直到在提交改动后发出一个新的查询。在CLOLSEN在10:15执行COMMIT之前，表中的数据都表现为没有改动过，和10:00时一样。
+
+如果没有足够的撤消空间可用于保存改动行先前的值，发出SELECT语句的用户就可能收到一条“ORA-01555: Snapshot Too Old”错误。
+
+### 7.2.3 数据库恢复
+
+撤消表空间也是实例恢复的关键组件。联机重做日志将提交和未提交的事务带入到实例崩溃的时间点。撤消数据用于回滚在事务崩溃或实例失败时没有提交的所有事务。
+
+### 7.2.4 闪回操作
+
+## 7.3 管理UNDO表空间
+
+### 7.3.1 创建撤消表空间
+
+**五、修改UNDO表空间**
+
+在撤消表空间上允许执行下列操作：
+
+- 将数据文件添加到撤消表空间。
+- 重命名撤消表空间中的数据文件。
+- 将撤消表空间的数据文件改为联机或脱机。
+- 开始或结束打开的表空间备份（ALTER TABLESPACE UNDOTBS BEGIN BACKUP）。
+- 启用或禁止撤消保留保证。
+
+Oracle自动管理其他所有方面。
+
+### 7.3.3 撤消表空间的初始参数
+
+**一、UNDO_MANAGEMENT**
+
+参数UNDO_MANAGEMENT在Oracle Database 10g中默认为MANUAL，在Oracle Database 11g及以后默认为AUTO。设置参数UNDO_MANAGEMENT为AUTO，可将数据库置于自动撤消管理模式中。无论是否指定UNDO_TABLESPACE参数，数据库中都必须至少有一个撤消表空间，这样UNDO_MANAGEMENT参数才有效。UNDO_MANAGEMENT不是动态参数，因此当UNDO_MANAGEMENT从AUTO改为MANUAL时必须重新启动实例。
+
+**二、UNDO_TABLESPACE**
+
+UNDO_TABLESPACE参数指定哪些撤消表空间将用于自动撤消管理。
+
+**三、UNDO_RETENTION**
+
+UNDO_RETENTION指定为查询保留撤消信息的最小时间量。在自动撤消模式中，UNDO_RETENTION默认为900秒。该值只有在撤消表空间中有足够的空间来支持读一致性查询时才有效。如果活动事务需要额外的撤消空间，未到期的撤消就可能用于满足活动事务，从而造成“ORA-01555：Snapshot Too Old”错误。
+
+动态性能视图V\$UNDOSTAT的列TUNED_UNDORETENTION给出每个时间周期中调整过的撤消保留时间，V$UNDOSTAT中每10分钟更新一次撤消表空间利用率的状态：
+
+```sql
+select to_char(a.BEGIN_TIME,'yyyy-mm-dd hh24:mi') BEGIN_TIME,
+       to_char(a.END_TIME,'yyyy-mm-dd hh24:mi') END_TIME,
+       a.UNDOBLKS,a.TXNCOUNT,a.TUNED_UNDORETENTION,
+       SSOLDERRCNT
+  from v$undostat a;
+```
+
+不需要指定UNDO_RETENTION参数，除非有闪回或LOB保留需求。UNDO_RETENTION参数不会用于管理事务回滚。
+
+### 7.3.4 多个撤消表空间
+
+数据库可有多个撤消表空间，但在同一时间，对于给定的实例只有一个撤消表空间可以是活动的。
+
+在实时应用群集（RAC）环境中，群集中的每个实例都需要一个撤消表空间。
+
+Oracle的最佳实践建议为每个实例创建一个撤消表空间，该撤消表空间大到足够处理所有事务加载。换句话说，“设置然后忘记它”。
+
+### 7.3.5 撤消表空间的大小调整和监控
+
+撤消表空间中有3种类型的撤消数据：活动的或未到期的撤消数据，到期的撤消数据，以及未使用的撤消数据。活动的或未到期的撤消数据是读一致性仍然需要的撤消数据，即使在事务已经提交以后。一旦需要活动撤消数据的所有查询已经完成，并到达撤消保留周期，活动的撤消数据就变成到期的撤消数据。到期的撤消数据仍可用于支持其他Oracle特性，如闪回特性，但它不再需要支持长期运行事务的读一致性。未使用的撤消数据是撤消表空间中从来没有用过的空间。
+
+因此，撤消表空间的最小尺寸是保存所有未提交或未回滚的活动事务中所有数据的前像版本所需要的空间。如果分配给撤消表空间的空间甚至不能支持对未提交事务的改动，从而不支持回滚操作，用户将获得错误消息“ORA-30036：unable to extend segment by space_qty in undo tablespace tablespace_name.”
+
+**手动修改UNDO方法：**
+
+```sql
+select to_char(a.BEGIN_TIME,'yyyy-mm-dd hh24:mi') BEGIN_TIME,
+       to_char(a.END_TIME,'yyyy-mm-dd hh24:mi') END_TIME,
+       a.UNDOBLKS,SSOLDERRCNT
+  from v$undostat a;
+```
+
+![Alt text](image-19.png)
+
+在19:27和19:37之间，有一个撤消利用率的峰值，从而导致一些失败的查询。根据经验，可使用下面的计算：
+
+```sql
+undo_tablespace_size = UR * UPS + overhead
+```
+
+UR等同于以秒为单位的撤消保留时间（由初始参数UNDO_RETENTION指定），UPS等同于每秒使用的撤消块（最大值），而overhead等同于撤消元数据。
+
+所以，截图中的峰值计算的结果为：
+
+```sql
+undo_tablespace_size = 900 * 45120/10/60 * 8182 = 553757760 = 528mb
+```
+
+在这个计算值上增加10%~20%，这样做是考虑到意外情况。
+
+## 7.4 闪回特性
+## 7.5 迁移到自动UNDO管理
+
 # 8 数据库调整
 # 9 In-Memory概述
 # 10 数据库安全性和审核
