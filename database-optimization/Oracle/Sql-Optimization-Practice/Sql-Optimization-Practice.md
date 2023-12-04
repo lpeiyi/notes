@@ -3238,9 +3238,107 @@ exec dbms_stats.set_table_prefs('&owner','&tab_name','method_opt','for columns &
 exec dbms_stats.gather_table_stats('&owner','&table_name');
 ```
 
-## 4.4 
-
 # 5 HINT
+
+## 5.1 append
+
+append的Hint一般使用在insert select语句，插入大量结果集的时候，采用直接路径（direct path）在表的高水位线以上直接写入数据。在没有commit之前，sql会一直持有表锁。
+
+**这个Hint在数据仓库的SQL中使用较多，一次插入记录几十万以上，执行频率低。**
+
+
+
+但是，在OLTP系统中，频繁执行而且插入少量记录的SQL也使用了append的hint，造成的后果就是：
+
+- sql执行效率低，大量的表锁等待，并发越多等待越严重。
+- 插入的表TF_B_OCS_BATDEAL，有大量的空间被浪费，每插入一条记录都会占用一个block。而且即使有大量记录被delete，这些高水位线以下的空闲块不会被重新使用。
+
+
+**解决方法：这种频繁执行，每次插入少量记录的情况，不能使用append，必须马上去掉这个hint**。
+
+
+补充：并行DML开启时，默认启用append插入模式。
+
+alter session enable parallel dml; --启用并行DML
+
+## 5.2 多表使用use_hash方法
+
+ 我们在写多表use_hash(use_nl也一样）hint的时候，use_hash的括号里面是可以放多个表（顺序无关），但是一定要结合leading 的hint，才能保证优化器不使用其他的join方式。 leading里面表的顺序非常关键哦，搞错了会带你去见笛卡尔（cartesian join）。
+
+## 5.3 并行parallel
+
+### 5.3.1 什么时候使用并行？
+
+一、普通SQL最常见的情况就是**大表的全表扫描**，还有就是**大的索引的快速全扫描**（注意，index fast full scan可以使用并行，index full scan 不能使用并行）。
+
+误区：**SQL执行慢就可以通过使用并行或是增加并行来提高速度。**
+
+正解：**并行能否发挥作用要看SQL的具体执行计划。比如标量子查询或是DB link，增大并行带来的性能提升是微乎其微的！**
+
+大表，至少要百万级以上记录的表，如果几亿甚至十几亿记录数的表全表扫描不使用并行，SQL的执行时间会相当长，特别是表在SQL执行的过程中如果还有其他session的DML操作的时候。
+
+OLTP系统的正常事务一般不会使用大表全扫描的执行计划，如果有一些统计分析的业务，建议在系统资源相对空闲的时候开启并行。
+
+二、用create table As Select创建一张大表
+
+```sql
+create table test parallel 16 as select .... from t1,t2 where .....;
+alter table test noparallel;
+```
+
+三、创建或重建索引
+
+```sql
+create index idx_test on table_A(col_name) parallel 8;
+alter index idx_test noparallel;
+```
+
+四、大表收集统计信息
+
+可以设置并行，如degree=>8
+
+五、其他
+
+不常见的操作还有表压缩等，一些比较耗时的分区操作也可以查查语法，看看是否支持并行操作。
+
+### 5.3.2 并行度的选择
+
+一般使用2的幂作为并行度，如2、4、8、16等，正常情况并行度不要设置太高，建议最多不要超过32。当然，特殊情况特殊对待，强悍的系统（比如exadata），如果需要非常高的响应速度，并行度再多个几倍也不是问题。并行高的时候并发就要减少，否则可能会耗光并行资源。
+
+### 5.3.3 并行DML
+
+DML有4种，INSERT、DELETE、UPDATE还有MERGE，如：
+
+insert *+ parallel(4) */ into t1 select .... from ....;
+
+这个写法将会在select部分使用并行度为4的并行，DML部分的并行并没有真正的启用，DML的并行默认是关闭的，如果需要使用，必须在session级别通过下面命令开启：
+
+alter session enable parallel dml;--推荐写法
+
+或者alter session force parallel dml parallel n; --用force的语法，可以使下面的dml即使不用parallel的hint，也会使用并行度为n的并行。
+
+执行这个命令后，才真正开启了DML的并行。
+
+注意：
+
+开启了DML的并行后，接下来的DML语句将会产生一个表锁，在commit之前，当前session 不能对该表做查询和dml操作，其他session也不能对该表做DML操作。
+
+所以建议，并行dml语句，应该在语句执行后立即commit; 然后再关闭并行dml，完整的过程应该是：
+
+```sql
+alter session enable parallel dml;
+
+your dml；
+
+commit；
+
+alter session disable parallel dml;
+或者
+alter session force parallel dml parallel 1;
+```
+
+
+
 # 6 参数
 # 7 工具
 # 8 经验总结
