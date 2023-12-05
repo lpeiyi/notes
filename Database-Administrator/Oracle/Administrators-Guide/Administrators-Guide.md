@@ -3462,6 +3462,45 @@ undo_tablespace_size = 900 * 45120/10/60 * 8182 = 553757760 = 528mb
 在这个计算值上增加10%~20%，这样做是考虑到意外情况。
 
 ## 7.4 闪回特性
+
+DBA可将系统和对象权限授予用户，允许他们改正自己的问题，并且一般没有任何DBA干预。在下面的示例中，允许用户SCOTT在特定的表上执行闪回操作，并允许他访问跨数据库的事务元数据：
+
+```sql
+grant insert, update, delete, select on hr.employees to scott;
+grant insert, update, delete, select on hr.departments to scott;
+grant flashback on hr.employees to scott;
+grant flashback on hr.departments to scott;
+grant select any transaction to scott;
+```
+
+### 7.4.1 Flashback Query（闪回查询）
+
+可在SELECT查询中使用AS OF子句检索在给定时间戳或SCN时表的状态。可使用该子句找出从午夜以来删除了表中的哪些行，或者可能希望只是将今天表中的行与昨天表中的行进行一次比较。
+
+使用时间戳查询：
+
+```sql
+select * from hr.employees as of timestamp systimestamp - interval '60' minute;
+```
+
+与使用时间戳相比，更可取的方法是将SCN用于闪回。SCN非常精确，而时间戳值只是每3秒存储一次以支持闪回操作。因此，使用时间戳启用的闪回可能会在1.5秒后取消。
+
+### 7.4.4 Flashback Table（闪回表）
+
+Flashback Table特性不仅能还原表中行在过去某个时间点的状态，也能还原表的索引、触发器和约束，同时数据库保持联机，从而提高数据库整体的可用性。可以将表还原到时间戳或SCN。如果用户错误的范围较小，只局限于一个或非常少的几个表中，Flashback Table就优于其他闪回方法。如果知道需要无条件地将表还原到过去某个时间点，则使用Flashback Table也是最简单的方法。
+
+要想在一个表或多个表上使用Flashback Table，必须在执行闪回操作之前在表上启用行移动，虽然行移动不需要在用户错误发生时有效。
+
+```sql
+alter table employees enable row movement;
+```
+
+```sql
+flashback table employees, departments
+ to timestamp systimestamp - interval '15' minute;
+```
+
+
 ## 7.5 迁移到自动UNDO管理
 
 # 8 数据库调整
