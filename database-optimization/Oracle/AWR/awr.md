@@ -4,7 +4,15 @@
 
 # 1 AWR报告的特点
 
+在Oracle Database 10g及更早版本中，Statspack收集并报告数据库统计信息，虽然这些统计信息严格按照基于文本的格式！从Oracle 10g开始，自动工作负荷存储库（Automatic Workload Repository，AWR）对Statspack概念进行了增强，除生成Statspack收集的所有统计信息外，AWR还生成更多的信息。此外，AWR与Cloud Control 12c高度集成，从而很容易分析和修正性能问题。
+
+AWR收集和维护性能统计信息，以便发现问题并进行自调整。报告包含最近的会话活动以及整体的系统统计信息和SQL的使用。
+
 # 2 获取AWR报告的方法
+
+```sql
+@?/rdbms/admin/awrrpt
+```
 
 # 3 主要关注点概述
 
@@ -231,3 +239,78 @@ SQL执行次数。
 从SGA Size Factor = 1.00的行开始，上下观察减小或增大SGA时对 Est Physical Reads的影响是否明显。
 
 此例可以将SGA增加25%。
+
+
+
+# 11 使用AWR
+
+AWR每小时捕获一次系统统计信息（生成数据库的“快照”），并将数据存储在它的存储库表中。和Statspack一样，当历史保留周期增加或快照之间的间隔时间减少时，AWR存储库的空间需求就会增加。默认情况下，在存储库中维持7天的数据量。可通过DBA_HIST_SNAPSHOT视图查看存储在AWR存储库中的快照。为启用AWR，可将STATISTICS_LEVEL初始参数设置为TYPICAL或ALL。如果设置STATISTICS_LEVEL为BASIC，则可生成AWR数据的手动快照，但这些快照不像由AWR自动执行的快照那样全面。将STATISTICS_LEVEL设置为ALL可将定时的OS统计信息和计划执行统计信息添加到用TYPICAL设置收集的那些信息中。
+
+## 11.1 管理快照
+
+为生成手动快照，可使用DBMS_WORKLOAD_REPOSITORY程序包的CREATE_ SNAPSHOT过程：
+
+```sql
+execute dbms_workload_repository.create_snapshot ();
+```
+
+为改变快照设置，可使用MODIFY_SNAPSHOT_SETTINGS过程。可修改快照的保留时间（以分钟为单位）和间隔时间（以分钟为单位）。下面的示例将当前数据库的快照间隔时间改为30分钟：
+
+```sql
+execute  dbms_workload_repository.modify_snapshot_settings( interval => 30);
+```
+
+为删除一定范围的快照，可使用DROP_SNAPSHOT_RANGE过程，同时指定要删除的开始快照ID和结束快照ID：
+
+```sql
+execute dbms_workload_repository.drop_snapshot_range(low_snap_id => 1, high_snap_id => 10);
+```
+
+## 11.2 管理基线
+
+可指定一组快照作为系统性能的基线。这些基线数据将被保留，便于以后与快照进行比较。使用CREATE_BASELINE过程来指定基线的开始快照和结束快照：
+
+```sql
+execute dbms_workload_repository.create_baseline(start_snap_id => 1, end_snap_id => 10,baseline_name => 'Monday baseline');
+
+select dbid,baseline_id,baseline_name,EXPIRATION,CREATION_TIME from dba_hist_baseline;
+```
+
+创建基线时，Oracle将一个ID赋予基线，可通过DBA_HIST_BASELINE视图查看过去的基线。作为基线开始和结束的快照将一直保留，直到删除基线。为删除基线，可使用DROP_BASELINE过程：
+
+```sql
+execute dbms_workload_repository.drop_baseline(baseline_name => 'Monday baseline', cascade => FALSE);
+```
+
+如果设置DROP_BASELINE过程的CASCADE参数为TRUE，则在删除基线时将删除相关的快照。
+
+可通过Cloud Control 12c或本节前面提到的数据字典视图来查看AWR数据。支持AWR的额外视图包括V$ACTIVE_SESSION_HISTORY（每秒采样一次）、DBA_HIST_SQL_PLAN（执行计划）以及DBA_HIST_WR_CONTROL（用于AWR设置）。
+
+## 11.3 运行Automatic Datab?ase Diagnostic Monitor(ADDM)报告
+
+除了依赖于针对AWR表（在以前的Oracle版本中与Statspack非常相似）的手动报告，还可使用Automatic Database Diagnostic Monitor（ADDM）。因为是基于AWR的数据，所以ADDM需要设置STATISTICS_LEVEL参数（根据前文的建议，该参数设置为TYPICAL或ALL）。可通过Cloud Control 12c的Performance Analysis部分访问ADDM，或手动运行ADDM报告。
+
+为对一组快照运行ADDM，可使用位于$ORACLE_HOME/rdbms/admin目录的addmrpt.sql脚本：
+
+```sql
+ @?/rdbms/admin/addmrpt
+```
+
+注意：必须拥有ADVISOR系统权限才能执行ADDM报告。
+
+## 11.4 使用自动SQL调整顾问
+
+Oracle Database 11g的新增特性自动SQL调整顾问（Automatic SQL Tuning Advisor）运行于默认维护窗口期间（使用AutoTask），并以AWR中收集的负载最高的SQL语句为目标。一旦在维护窗口期间开始自动SQL调整，自动SQL调整顾问就执行下列步骤：
+
+1. 从AWR统计信息识别重复的高负载SQL。忽略最近调整的SQL和递归SQL。
+2. 调用SQL调整顾问，调整高负载SQL。
+3. 为高负载SQL创建SQL配置文件，并分别测试有配置文件和无配置文件的性能。
+4. 如果性能至少提高1/3，则自动保留配置文件，否则，注意在调整报告中加以改进。
+
+SQL 优化顾问默认每天晚上自动运行：
+
+```sql
+set linesize 200
+col WINDOW_NAME forma a20
+select WINDOW_NAME,SQL_TUNE_ADVISOR,WINDOW_NEXT_TIME from DBA_AUTOTASK_WINDOW_CLIENTS;
+```
