@@ -2677,8 +2677,25 @@ from t_app_online_his2 a
 
 原sql理解起来也有点难度，主要是要匹配出LINE_ID is null和CREATE_DATE同时满足五个exists条件的记录。
 
-## 2.37 
+## 2.37 隐式转换
 
+隐式转换常出现在有绑定变量的SQL中，当绑定变量的数据类型和字段定义的类型不一致时，可能会极
+大影响性能。
+
+第一种情况是，字段定义成varchar2时，千万不要使用number类型的绑定变量，否则会严重消耗系统资源，SQL本身性能也会非常差。常出错的场景是，电话号码、账号信息等全数字的字段。
+
+另一种情况是，number数据类型的字段，在绑定变量是varchar2时，也会发生隐式类型转换。但是，这个隐式类型转换是发生在绑定变量上，因此不会对执行计划有影响，是无害的。
+
+
+此外还有一些其他的隐式类型转换，如date类型的字段，使用了timestamp的绑定变量等，也需要注意。
+
+如何检查和发现系统中存在的隐式类型转换？ 这里简单列出最常见的一种检查方法：
+
+```sql
+select sql_id,object_owner,operation,options,object_name,filter_predicates,rojection
+  from v$sql_plan 
+ where filter_predicates like 'TO_NUMBER%';
+```
  
 # 3 索引
 ## 3.1 or条件时需要的索引
