@@ -907,9 +907,9 @@ no obsolete backups found
 ```
 
 
-#  3 集群
+# 4 集群
 
-## 3.1 ORA-29701: unable to connect to Cluster Synchronization Service
+## 4.1 ORA-29701: unable to connect to Cluster Synchronization Service
 
 +ASM实例启动失败。
 ```sql
@@ -1101,7 +1101,7 @@ ora.ons资源被禁用，
 
 
 
-### 3.1.1 学习CRS
+### 4.1.1 学习CRS
 
 Oracle的CRS（Cluster Ready Service，简称CRS）是从Oracle 10g R1 RAC开始推出的集群软件。它的主要作用是提供标准的群集服务接口，以便构建Oracle的并行数据库即RAC。此外，CRS还提供了一组高可用性的应用程序接口（API），用以搭建一般应用程序的高可用集群，如MySQL的双机热备等。
 
@@ -1120,7 +1120,7 @@ Oracle的CRS（Cluster Ready Service，简称CRS）是从Oracle 10g R1 RAC开始
 crsctl：这是一个命令行工具，用于管理CRS服务以及查看CRS服务的状态。通过执行crsctl status可以查看CRS服务的当前状态，执行crsctl stop可以停止CRS服务，执行crsctl start可以启动CRS服务。
 
 
-## 3.2 CRS-2883,CRS-4406,CRS-41053,PRVH-0116,CRS-4000
+# 4.2 CRS-2883,CRS-4406,CRS-41053,PRVH-0116,CRS-4000
 
 安装rac时，root.sh脚本节点1成功，但是在节点2报CRS-2883,CRS-4406,CRS-41053,PRVH-0116,CRS-4000错误。
 
