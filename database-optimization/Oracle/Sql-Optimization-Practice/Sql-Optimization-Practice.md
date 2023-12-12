@@ -3390,7 +3390,42 @@ cursor_sharing=EXACT + 合理使用绑定变量（合理就是：类似ID、acco
 2、字段唯一值少，还有经常互相转变的情况，比如常见的工单处理表：没有处理的状态是0，处理后的状态是1，夜间统计信息收集后，由于字段值的不稳定，统计信息经常不能反映表的实时数据分布情况，这种情况谈是否使用绑定变量已没有意义，涉及这类表的SQL，可以关闭字段上的直方图收集，再配合rownum和hint 来提高SQL效率和稳定性，必要时还可以使用dynamic_sampling（动态采样）来辅助优化器做出正确的执行计划。
 
 # 7 工具
-# 8 经验总结
+
+# 7.1 sqlhc
+
+sqlhc是SQL health check的简称，能够收集sql相关的表、索引、统计信息、优化器参数、SQL执行情况、等待事件等信息，可以帮你检查SQL存在的问题并优化SQL。sqlhc是一个sql文件，可以直接在sqlplus中执行。
+
+使用sqlhc之前，首先要提供要检查或优化的SQL的sql_id，一般分析性能问题的方式是awr，在awr中可以直接获取到sql_id。
+
+sqlhc使用方法是：
+
+```sql
+start sqlhc.sql T sql_id
+```
+
+执行完毕后，会在当前目录下生成一个zip文件，包含：
+
+- 1_health_check.html
+- 2_diagnostics.html
+- 3_execution_plans.html
+- 4_sql_detail.html文件
+ 
+如果sql执行时间超过5秒，还有有一个5_sql_monitor.html文件。
+
+重点需要关注1、2、3文件。
+
+# 8 实用经验
+
+## 8.1 降低SQL的执行频率
+
+在收集的awr报告中，消耗CPU的sql大户经常会发现有收集的时间段内执行次数是几十万次，折算一下一天执行几千万次。
+
+这种sql单次执行问题不大，buffer gets只有几十或者个位数，但是乘以执行次数之后，消耗的cpu就非常厉害了。
+
+至于为什么会执行这么多次，因为使用了循环，并且使用并发，一秒钟可以执行几百次。
+
+所以，在优化sql的基础上，我们应该思考一下，是否这个sql需要这么高的执行频率，业务上的实时性是否可以降低要求。
+
 # 9 附件
 
 [sql-monitor.sql](./files/sql-monitor.sql)

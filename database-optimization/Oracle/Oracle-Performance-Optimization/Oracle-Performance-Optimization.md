@@ -1,3 +1,7 @@
+# 目录
+
+[toc]
+
 # 一、性能优化综述
 
 ## 1.1性能优化能力
@@ -1286,6 +1290,7 @@ oradebug event 10046 trace name context off;
 
 在4.2节中介绍了四种查看执行计划常用的四种方法
 
+0. 
 1. EXPLAIN PLAN 命令
 2. DBMS_XPLAN 包
 3. SQLPLUS中的AUTOTRACE开关
