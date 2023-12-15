@@ -3426,6 +3426,10 @@ start sqlhc.sql T sql_id
 
 所以，在优化sql的基础上，我们应该思考一下，是否这个sql需要这么高的执行频率，业务上的实时性是否可以降低要求。
 
+## 8.2 不改代码解决SQL性能问题的几种方法
+
+
+
 # 9 附件
 
 [sql-monitor.sql](./files/sql-monitor.sql)
