@@ -16,6 +16,57 @@ SQL Monitor 的应用场景主要针对可能存在性能瓶颈的 SQL 进行监
 
 ## 方法1
 
+业务sql增加monitor的hint, 生成sql monitor文件:
+
+```sql
+select *+ monitor tag001 */ count(*) from t1;
+```
+
+注意：需要11g及以上版本(active格式需要11gR2及以上版本)
+
+示例：
+
+**一、在sqlplus执行：**
+
+如果sql执行时间不长, 可以等sql结束后,用下面代码保存sql monitor文件(不需要sqlid信息,默认采集刚刚执行过的sqlid):
+```sql
+set linesize 10000 pages 6000
+set longchunksize 20000000 long 20000000
+set trimout on trims on head off
+spool sqlmon.html
+select
+DBMS_SQLTUNE.REPORT_SQL_MONITOR(
+report_level=>'ALL',
+type=>'active') as report
+from dual;
+spool off
+```
+
+执行完后,就在当前目录下生成了sqlmon.html 文件,即为所需sql monitor文件。
+
+如果执行时间很长，可以添加sql_id：
+
+```sql
+select sql_id , to_char(substr(sql_text,1,200)) as sql_text
+from gv$sqlarea
+where upper(SQL_TEXT) like upper('%tag001%')
+and SQL_TEXT not like '%SQL_TEXT%';
+
+--得到sqlid后,就可以用下面脚本保存sql monitor文件了:
+set linesize 10000 pages 6000
+set longchunksize 20000000 long 20000000
+set trimout on trims on head off
+spool sqlmon.html
+select
+DBMS_SQLTUNE.REPORT_SQL_MONITOR(
+sql_id=>'&sql_id',
+report_level=>'ALL',
+type=>'active') as report
+from dual;
+```
+
+**二、或，在客户端执行：**
+
 ```sql
 select /*+monitor*/* from t a where object_name like 'WD%' and  1=2  and exists (select 1 from t b where a.object_id=b.object_id)
 
