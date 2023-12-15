@@ -214,7 +214,6 @@ innodb_log_file_size=100M
   Process: 6673 ExecStartPre=/usr/bin/mysqld_pre_systemd (code=exited, status=0/SUCCESS)
  Main PID: 6697 (code=exited, status=0/SUCCESS)
    Status: "Server shutdown complete"
-
 [mysql@mysql001 ~]$ sudo systemctl start mysqld
 [mysql@mysql001 ~]$ sudo systemctl status mysqld
 ● mysqld.service - MySQL Server
