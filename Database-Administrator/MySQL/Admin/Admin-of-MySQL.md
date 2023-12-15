@@ -204,6 +204,17 @@ innodb_log_file_size=100M
 **八、启动mysql服务**
 
 ```bash
+[mysql@mysql001 data]$ sudo systemctl status mysqld;
+● mysqld.service - MySQL Server
+   Loaded: loaded (/usr/lib/systemd/system/mysqld.service; enabled; vendor preset: disabled)
+   Active: inactive (dead) since Sat 2023-12-16 02:18:31 CST; 6s ago
+     Docs: man:mysqld(8)
+           http://dev.mysql.com/doc/refman/en/using-systemd.html
+  Process: 6697 ExecStart=/usr/sbin/mysqld $MYSQLD_OPTS (code=exited, status=0/SUCCESS)
+  Process: 6673 ExecStartPre=/usr/bin/mysqld_pre_systemd (code=exited, status=0/SUCCESS)
+ Main PID: 6697 (code=exited, status=0/SUCCESS)
+   Status: "Server shutdown complete"
+
 [mysql@mysql001 ~]$ sudo systemctl start mysqld
 [mysql@mysql001 ~]$ sudo systemctl status mysqld
 ● mysqld.service - MySQL Server
