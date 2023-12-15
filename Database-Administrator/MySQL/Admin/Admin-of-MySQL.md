@@ -35,44 +35,101 @@ Red Hat Enterprise Linux Server release 7.9 (Maipo)
 上传的位置看个人而定
 
 ```bash
-[root@lu9up ~]# ls
-anaconda-ks.cfg  mysql-8.0.34-1.el7.x86_64.rpm-bundle.tar
+[root@mysql001 ~]# ll | grep mysql
+-rw-r--r--  1 root root 1031792640 Dec 15 23:57 mysql-8.0.34-1.el7.x86_64.rpm-bundle.tar
 ```
 
-**三、预安装**
+**三、检查是否安装MySQL或MariaDB**
 
-Installation Prerequisites
-The installation must be performed as an operating system root user, as the installation process involves creating a user, a group, directories, and assigning ownership and permissions. Installed MySQL binaries are owned by the operating system root user.
+centos和redhat上一般已经安装有mariadb-libs包和/my.cnf配置文件，安装MySQL数据库前一定要删除，以免和新安装的MySQL造成冲突。
 
-Note
-Unless otherwise indicated, procedures in this guide are performed as the operating system root user.
-
-MySQL has a dependency on the libaio library. Data directory initialization and subsequent server startup steps fail if this library is not installed locally. If necessary, install it using the appropriate package manager. For example, on Yum-based systems:
-
-$> yum search libaio  # search for info
-$> yum install libaio # install library
-Oracle Linux 8 does not install the file /lib64/libtinfo.so.5 by default, which is required by the MySQL client bin/mysql for mysql-VERSION-linux-glibc2.12-x86_64.tar.xz packages. To work around this issue, install the ncurses-compat-libs package:
-
-$> yum install ncurses-compat-libs
-
-**四、Creating the mysql User and Group**
-
-he mysql user owns the MySQL data directory. It is also used to run the mysqld server process, as defined in the systemd mysqld.service file (see Starting the Server using systemd). The mysql user has read and write access to anything in the MySQL data directory. It does not have the ability to log into MySQL. It only exists for ownership purposes.
-
-The mysql group is the database administrator group. Users in this group have read and write access to anything in the MySQL data directory, and execute access on any packaged MySQL binary.
-
-This command adds the mysql group.
+检查默认配置文件是否存在：
 
 ```bash
-[root@lu9up ~]# groupadd -g 27 mysql
-[root@lu9up ~]# useradd -g mysql mysql
-[root@lu9up mysql]# passwd mysql
+[root@mysql001 ~]# ll /etc/my.cnf
+-rw-r--r--. 1 root root 570 Oct  1  2020 /etc/my.cnf
 ```
 
-**五、解压**
+再检查是否有MySQL或者MariaDB的安装包：
 
 ```bash
-[root@lu9up ~]# tar -xvf mysql-8.0.34-1.el7.x86_64.rpm-bundle.tar -C /home/mysql/
+[root@mysql001 ~]# rpm -qa | grep -i mysql
+[root@mysql001 ~]# rpm -qa | grep -i mariadb
+mariadb-libs-5.5.68-1.el7.x86_64
+```
+
+删除这些文件：
+
+```bash
+[root@mysql001 ~]# rpm -e mariadb-libs
+[root@mysql001 ~]# ll /etc/my.cnf
+ls: cannot access /etc/my.cnf: No such file or directory
+```
+
+删除mariadb-libs后，/etc/my.cnf也会被一并删除。
+
+注意：如果报依赖错误，使用下面的命令删除：
+
+```bash
+rpm -e --nodeps mariadb-libs-5.5.68-1.el7.x86_64
+```
+
+卸载mariadb-libs后，my.cnf也会被一并删除。
+
+**四、预安装**
+
+安装libaio和ncurses-compat-libs包：
+
+```bash
+yum install libaio ncurses-compat-libs -y
+```
+
+**五、创建MySQL用户和组**
+
+```bash
+groupadd -g 27 mysql
+useradd -g mysql mysql
+passwd mysql
+```
+
+mysql用户添加系统权限：
+
+```sql
+[root@mysql001 ~]# vim /etc/sudoers
+```
+
+添加：
+
+```bash
+mysql     ALL=(ALL)      NOPASSWD:ALL
+```
+
+NOPASSWD是无需输入密码（个人习惯），安全起见，建议改为ALL。
+
+**六、解压安装包**
+
+查看安装包里包含的rpm包：
+
+```bash
+[root@mysql001 ~]# tar -tvf mysql-8.0.34-1.el7.x86_64.rpm-bundle.tar
+-rw-r--r-- bteam/common 16755300 2023-06-25 11:06 mysql-community-client-8.0.34-1.el7.x86_64.rpm
+-rw-r--r-- bteam/common  3745824 2023-06-25 11:06 mysql-community-client-plugins-8.0.34-1.el7.x86_64.rpm
+-rw-r--r-- bteam/common   681724 2023-06-25 11:06 mysql-community-common-8.0.34-1.el7.x86_64.rpm
+-rw-r--r-- bteam/common 528347988 2023-06-25 11:07 mysql-community-debuginfo-8.0.34-1.el7.x86_64.rpm
+-rw-r--r-- bteam/common   1947800 2023-06-25 11:07 mysql-community-devel-8.0.34-1.el7.x86_64.rpm
+-rw-r--r-- bteam/common   4217912 2023-06-25 11:07 mysql-community-embedded-compat-8.0.34-1.el7.x86_64.rpm
+-rw-r--r-- bteam/common   2344364 2023-06-25 11:07 mysql-community-icu-data-files-8.0.34-1.el7.x86_64.rpm
+-rw-r--r-- bteam/common   1563264 2023-06-25 11:07 mysql-community-libs-8.0.34-1.el7.x86_64.rpm
+-rw-r--r-- bteam/common    685312 2023-06-25 11:08 mysql-community-libs-compat-8.0.34-1.el7.x86_64.rpm
+-rw-r--r-- bteam/common  67410132 2023-06-25 11:08 mysql-community-server-8.0.34-1.el7.x86_64.rpm
+-rw-r--r-- bteam/common  25637968 2023-06-25 11:08 mysql-community-server-debug-8.0.34-1.el7.x86_64.rpm
+-rw-r--r-- bteam/common 378442676 2023-06-25 11:10 mysql-community-test-8.0.34-1.el7.x86_64.rpm
+```
+
+解压缩安装包：
+
+```bash
+[root@mysql001 ~]# tar -xvf mysql-8.0.34-1.el7.x86_64.rpm-bundle.tar -C /home/mysql/rpm/
 mysql-community-client-8.0.34-1.el7.x86_64.rpm
 mysql-community-client-plugins-8.0.34-1.el7.x86_64.rpm
 mysql-community-common-8.0.34-1.el7.x86_64.rpm
@@ -87,32 +144,111 @@ mysql-community-server-debug-8.0.34-1.el7.x86_64.rpm
 mysql-community-test-8.0.34-1.el7.x86_64.rpm
 ```
 
-六、
-
-```sql
-[mysql@lu9up ~]$ sudo yum install mysql-community-{server,client,client-plugins,icu-data-files,common,libs}-*
-```
-
-七、启动mysql服务
+检查rpm包：
 
 ```bash
-[mysql@lu9up ~]$ sudo systemctl start mysqld
+[mysql@mysql001 rpm]$ pwd
+/home/mysql/rpm
+[mysql@mysql001 rpm]$ ls
+mysql-community-client-8.0.34-1.el7.x86_64.rpm           mysql-community-icu-data-files-8.0.34-1.el7.x86_64.rpm
+mysql-community-client-plugins-8.0.34-1.el7.x86_64.rpm   mysql-community-libs-8.0.34-1.el7.x86_64.rpm
+mysql-community-common-8.0.34-1.el7.x86_64.rpm           mysql-community-libs-compat-8.0.34-1.el7.x86_64.rpm
+mysql-community-debuginfo-8.0.34-1.el7.x86_64.rpm        mysql-community-server-8.0.34-1.el7.x86_64.rpm
+mysql-community-devel-8.0.34-1.el7.x86_64.rpm            mysql-community-server-debug-8.0.34-1.el7.x86_64.rpm
+mysql-community-embedded-compat-8.0.34-1.el7.x86_64.rpm  mysql-community-test-8.0.34-1.el7.x86_64.rpm
 ```
-八、查看临时密码
 
-[mysql@lu9up ~]$ sudo grep 'temporary password' /var/log/mysqld.log
-2023-12-10T17:32:22.685442Z 6 [Note] [MY-010454] [Server] A temporary password is generated for root@localhost: u*0>WAdj-<l-
+**七、安装RPM包**
 
+在大部分情况下，MySQL标准安装需要安装mysql-community-server, mysql-community-client, mysql-community-client-plugins, mysql-community-libs, mysql-community-icu-data-files, mysql-community-common, and mysql-community-libs-compat。
 
-九、登录并修改密码
+虽然使用如yum来安装包更好，但也可以直接用rpm -Uvh命令安装rpm包。但是，使用rpm -Uvh反而使安装过程更容易失败，因为安装过程可能会遇到潜在的依赖问题。
 
-[mysql@lu9up ~]$ mysql -uroot -p'u*0>WAdj-<l-'
+执行安装命令：
 
-mysql> set password = 'Lu9up123.';
-Query OK, 0 rows affected (0.01 sec)
+```sql
+sudo yum install mysql-community-{server,client,client-plugins,icu-data-files,common,libs}-*
+```
 
-[mysql@lu9up ~]$ mysql -uroot -pLu9up123.
+如果只安装客户端程序，可以不安装的mysql-community-server ：
 
+```bash
+sudo yum install mysql-community-{client,client-plugins,common,libs}-*
+```
+
+**七、初始化数据库**
+
+安装好后，先不要启动数据库服务，因为第一次启动MySQL数据库服务时会自动初始化，可以根据自己的需求对系统参数进行修改，修改系统参数的方式为编辑默认配置文件：/etc/my.cnf。
+
+1. datadir：是MySQL数据库系统的一个重要参数，它指定了MySQL数据库的数据文件存放的位置。这些数据文件包括了所有的数据库、表、索引等信息。默认为/var/lib/mysql，可以修改到合适的磁盘路径中，例如/disk1/data。
+2. innodb_log_file_size：这个参数指定在一个日志组中，每个log的大小。innodb的logfile就是事务日志，用来在mysql crash后的恢复，所以设置合理的大小对于mysql的性能非常重要，直接影响数据库的写入速度，事务大小，异常重启后的恢复。
+3. innodb_data_home_dir：用于指定InnoDB存储引擎的数据文件的基本路径。这个路径下的所有文件都是InnoDB存储引擎的数据文件，包括表空间文件、双写日志文件等。
+4. innodb_log_group_home_dir：innodb_log_group_home_dir是MySQL数据库中的一个参数，用于指定InnoDB存储引擎的redo日志文件所在的目录。这些日志文件用于存储事务数据，直到这些数据被写入到表空间的磁盘文件中。默认情况下，innodb_log_group_home_dir的值通常被设置为与innodb_data_home_dir相同。innodb_data_home_dir用于指定InnoDB存储引擎的数据文件的基本路径。这个路径下的所有文件都是InnoDB存储引擎的数据文件，包括表空间文件、双写日志文件等。但是，为了获得最佳的性能，建议将innodb_data_home_dir和innodb_log_group_home_dir设置到不同的物理存储阵列上，这样可以避免IO资源的冲突，有利于服务器处理大量的高并发连接。
+
+```bash
+[mysql@mysql001 ~]$ cat /etc/my.cnf
+
+datadir=/disk1/data
+socket=/var/lib/mysql/mysql.sock
+
+log-error=/var/log/mysqld.log
+pid-file=/var/run/mysqld/mysqld.pid
+
+innodb_log_file_size=100M
+```
+
+这里，我只调整了datadir和innodb_log_file_size参数。
+
+参数文件准备好后，接下来可以启动mysqld服务。
+
+**八、启动mysql服务**
+
+```bash
+[mysql@mysql001 ~]$ sudo systemctl start mysqld
+[mysql@mysql001 ~]$ sudo systemctl status mysqld
+● mysqld.service - MySQL Server
+   Loaded: loaded (/usr/lib/systemd/system/mysqld.service; enabled; vendor preset: disabled)
+   Active: active (running) since Sat 2023-12-16 00:48:43 CST; 20min ago
+     Docs: man:mysqld(8)
+           http://dev.mysql.com/doc/refman/en/using-systemd.html
+  Process: 1031 ExecStartPre=/usr/bin/mysqld_pre_systemd (code=exited, status=0/SUCCESS)
+ Main PID: 1631 (mysqld)
+   Status: "Server is operational"
+   CGroup: /system.slice/mysqld.service
+           └─1631 /usr/sbin/mysqld
+
+Dec 16 00:48:37 mysql001 systemd[1]: Starting MySQL Server...
+Dec 16 00:48:43 mysql001 systemd[1]: Started MySQL Server.
+```
+**九、查看临时密码**
+
+```bash
+[mysql@mysql001 ~]$ sudo grep 'temporary password' /var/log/mysqld.log
+2023-12-15T16:48:40.499788Z 6 [Note] [MY-010454] [Server] A temporary password is generated for root@localhost: ;eYMs-0+Lovk
+```
+
+MySQL数据库root的密码为`;eYMs-0+Lovk`，第一次登录需使用这个密码，然后再修改自定义密码。
+
+**十、登录并修改密码**
+
+使用临时密码登录：
+
+```bash
+[mysql@mysql001 ~]$ mysql -uroot -p';eYMs-0+Lovk'
+```
+
+修改密码：
+
+```sql
+mysql> set password = 'Mysql123.';
+Query OK, 0 rows affected (0.00 sec)
+```
+
+验证：
+
+```bash
+[mysql@lu9up ~]$ mysql -uroot -pMysql123.
+```
 
 ### 1.1.2 二进制文件安装
 
