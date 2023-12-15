@@ -111,6 +111,9 @@ mysql-community-test-8.0.34-1.el7.x86_64.rpm
 mysql> set password = 'Lu9up123.';
 Query OK, 0 rows affected (0.01 sec)
 
+[mysql@lu9up ~]$ mysql -uroot -pLu9up123.
+
+
 ### 1.1.2 二进制文件安装
 
 ## 1.2 升级
