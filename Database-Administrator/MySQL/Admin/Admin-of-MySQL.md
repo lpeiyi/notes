@@ -76,15 +76,7 @@ rpm -e --nodeps mariadb-libs-5.5.68-1.el7.x86_64
 
 卸载mariadb-libs后，my.cnf也会被一并删除。
 
-**四、预安装**
-
-安装libaio和ncurses-compat-libs包：
-
-```bash
-yum install libaio ncurses-compat-libs -y
-```
-
-**五、创建MySQL用户和组**
+**四、创建MySQL用户和组**
 
 ```bash
 groupadd -g 27 mysql
@@ -106,7 +98,7 @@ mysql     ALL=(ALL)      NOPASSWD:ALL
 
 NOPASSWD是无需输入密码（个人习惯），安全起见，建议改为ALL。
 
-**六、解压安装包**
+**五、解压安装包**
 
 查看安装包里包含的rpm包：
 
@@ -158,7 +150,7 @@ mysql-community-devel-8.0.34-1.el7.x86_64.rpm            mysql-community-server-
 mysql-community-embedded-compat-8.0.34-1.el7.x86_64.rpm  mysql-community-test-8.0.34-1.el7.x86_64.rpm
 ```
 
-**七、安装RPM包**
+**六、安装RPM包**
 
 在大部分情况下，MySQL标准安装需要安装mysql-community-server, mysql-community-client, mysql-community-client-plugins, mysql-community-libs, mysql-community-icu-data-files, mysql-community-common, and mysql-community-libs-compat。
 
@@ -265,3 +257,361 @@ Query OK, 0 rows affected (0.00 sec)
 ## 1.2 升级
 
 ## 1.3 
+
+# 2 账号和权限
+
+# 3 日志
+
+## 3.1 错误日志
+
+### 3.1.1 系统参数log_error_services
+
+```sql
+mysql> show variables like 'log_error_services';
++--------------------+----------------------------------------+
+| Variable_name      | Value                                  |
++--------------------+----------------------------------------+
+| log_error_services | log_filter_internal; log_sink_internal |
++--------------------+----------------------------------------+
+1 row in set (0.00 sec)
+```
+
+非内置写组件
+
+```sql
+mysql> install component 'file://component_log_sink_syseventlog';
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> select component_id,component_urn from mysql.component where component_urn like '%syseventlog%';
++--------------+---------------------------------------+
+| component_id | component_urn                         |
++--------------+---------------------------------------+
+|            2 | file://component_log_sink_syseventlog |
++--------------+---------------------------------------+
+1 row in set (0.00 sec)
+```
+
+log_sink_syseventlog配置错误日志写入Linux系统日志:
+
+```sql
+mysql> set global log_error_services='log_filter_internal; log_sink_internal; log_sink_syseventlog';
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> show variables like 'log_error_services';
++--------------------+--------------------------------------------------------------+
+| Variable_name      | Value                                                        |
++--------------------+--------------------------------------------------------------+
+| log_error_services | log_filter_internal; log_sink_internal; log_sink_syseventlog |
++--------------------+--------------------------------------------------------------+
+1 row in set (0.01 sec)
+```
+
+### 3.1.2 log_filter_internal
+
+```sql
+mysql> show variables like 'log_error_verbosity';
++---------------------+-------+
+| Variable_name       | Value |
++---------------------+-------+
+| log_error_verbosity | 3     |
++---------------------+-------+
+1 row in set (0.00 sec)
+```
+
+### 3.1.3 log_sink_internal
+
+```sql
+mysql> show variables like 'log_error';
++---------------+---------------------+
+| Variable_name | Value               |
++---------------+---------------------+
+| log_error     | /var/log/mysqld.log |
++---------------+---------------------+
+1 row in set (0.00 sec)
+```
+
+### 3.1.4 log_filter_diagmet组件
+
+### 3.1.5 log_sink_json组件
+
+### 3.1.6 log_sink_syseventlog组件
+
+```sql
+mysql> show variables like '%syseventlog%';
++-------------------------+--------+
+| Variable_name           | Value  |
++-------------------------+--------+
+| syseventlog.facility    | daemon |
+| syseventlog.include_pid | ON     |
+| syseventlog.tag         |        |
++-------------------------+--------+
+3 rows in set (0.01 sec)
+```
+
+### 3.1.7 系统参数 log_timestamps
+
+```sql
+
+```
+
+### 3.1.8 备份错误日志
+
+```bash
+[mysql@mysql001 data]$ sudo mv error.log error.log.bak231220
+[sudo] password for mysql:
+[mysql@mysql001 data]$ mysqladmin -uroot -pMysql123. flush-logs
+mysqladmin: [Warning] Using a password on the command line interface can be insecure.
+```
+
+### 3.1.9 错误日志记录到数据库中
+
+```sql
+mysql> show status like 'error_log%';
++---------------------------+------------------+
+| Variable_name             | Value            |
++---------------------------+------------------+
+| Error_log_buffered_bytes  | 74336            |
+| Error_log_buffered_events | 608              |
+| Error_log_expired_events  | 0                |
+| Error_log_latest_write    | 1702991680174494 |
++---------------------------+------------------+
+4 rows in set (0.00 sec)
+
+mysql> select * from performance_schema.error_log limit 4\G
+*************************** 1. row ***************************
+    LOGGED: 2023-12-16 00:48:37.870328
+ THREAD_ID: 0
+      PRIO: System
+ERROR_CODE: MY-013169
+ SUBSYSTEM: Server
+      DATA: /usr/sbin/mysqld (mysqld 8.0.34) initializing of server in progress as process 1120
+```
+
+## 3.2 通用查询日志
+
+记录客户端操作日志，包括连接断开信息，发送的sql。
+
+### 3.2.1 系统参数说明
+
+**一、log_output**
+
+```sql
+mysql> set global log_output='table,file';
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> show variables like 'log_output';
++---------------+------------+
+| Variable_name | Value      |
++---------------+------------+
+| log_output    | FILE,TABLE |
++---------------+------------+
+1 row in set (0.00 sec)
+```
+
+**二、general_log**
+
+```sql
+mysql> set global general_log=on;
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> show variables like 'general_log';
++---------------+-------+
+| Variable_name | Value |
++---------------+-------+
+| general_log   | ON    |
++---------------+-------+
+1 row in set (0.00 sec)
+```
+
+**三、general_log_file**
+
+```sql
+mysql> show variables like 'general_log_file';
++------------------+--------------------------+
+| Variable_name    | Value                    |
++------------------+--------------------------+
+| general_log_file | /disk1/data/mysql001.log |
++------------------+--------------------------+
+1 row in set (0.00 sec)
+```
+
+**四、sql_log_off**
+
+### 3.2.2 通用查询日志记录的内容
+
+**一、通用查询日志文件中的记录**
+
+**二、通用查询日志表中的记录**
+
+mysql.general_log的定义：
+
+```sql
+mysql> show create table mysql.general_log\G
+*************************** 1. row ***************************
+       Table: general_log
+Create Table: CREATE TABLE `general_log` (
+  `event_time` timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `user_host` mediumtext NOT NULL,
+  `thread_id` bigint unsigned NOT NULL,
+  `server_id` int unsigned NOT NULL,
+  `command_type` varchar(64) NOT NULL,
+  `argument` mediumblob NOT NULL
+) ENGINE=CSV DEFAULT CHARSET=utf8mb3 COMMENT='General log'
+1 row in set (0.00 sec)
+```
+
+```sql
+mysql> select event_time,user_host,thread_id,server_id,command_type,convert(argument using utf8mb4) argument
+    ->   from mysql.general_log
+    ->  where thread_id = 12 order by event_time desc\G
+*************************** 1. row ***************************
+  event_time: 2023-12-20 00:13:40.560415
+   user_host: root[root] @ localhost []
+   thread_id: 12
+   server_id: 1
+command_type: Query
+    argument: select event_time,user_host,thread_id,server_id,command_type,convert(argument using utf8mb4) argument
+  from mysql.general_log
+ where thread_id = 12 order by event_time desc
+*************************** 2. row ***************************
+  event_time: 2023-12-20 00:13:07.265893
+   user_host: root[root] @ localhost []
+   thread_id: 12
+   server_id: 1
+command_type: Query
+    argument: select event_time,user_host,thread_id,server_id,command_type,convert(argument using utf8mb4) argument
+  from mysql.general_log
+ where thread_id = 12 order by event_time desc
+```
+
+## 3.3 慢查询日志
+
+### 3.3.1 慢查询配置参数
+
+**一、long_query_time**
+
+**二、slow_query_log**
+
+启用慢查询日志：
+
+```sql
+mysql> set global slow_query_log=on;
+Query OK, 0 rows affected (0.00 sec)
+```
+
+**三、slow_query_log_file**
+
+```sql
+mysql> show variables like 'slow_query_log_file';
++---------------------+-------------------------------+
+| Variable_name       | Value                         |
++---------------------+-------------------------------+
+| slow_query_log_file | /disk1/data/mysql001-slow.log |
++---------------------+-------------------------------+
+1 row in set (0.00 sec)
+
+
+[mysql@mysql001 log]$ tailf /disk1/data/mysql001-slow.log
+/usr/sbin/mysqld, Version: 8.0.34 (MySQL Community Server - GPL). started with:
+Tcp port: 3306  Unix socket: /var/lib/mysql/mysql.sock
+Time                 Id Command    Argument
+```
+
+**四、log_slow_extra**
+
+```sql
+mysql> set global log_slow_extra=on;
+Query OK, 0 rows affected (0.00 sec)
+```
+
+### 3.3.2 statement_digest_text解析慢sql
+
+```sql
+mysql> select statement_digest_text("select user(),host from mysql.user where user = 'lu9up'");
++----------------------------------------------------------------------------------+
+| statement_digest_text("select user(),host from mysql.user where user = 'lu9up'") |
++----------------------------------------------------------------------------------+
+| SELECT SYSTEM_USER ( ) , HOST FROM `mysql` . `user` WHERE SYSTEM_USER = ?        |
++----------------------------------------------------------------------------------+
+1 row in set (0.01 sec)
+```
+
+
+```bash
+[mysql@mysql001 data]$ mysqldumpslow -s c  -t 2 /disk1/data/mysql001-slow.log
+```
+
+
+### 3.3.3 使用pt-query-digest解析慢查询日志
+
+#### 3.3.3.1 语法和选项
+
+语法：
+
+```bash
+pt-query-digest [OPTIONS] [FILES] [DSN]
+```
+
+选项：
+
+1. --ask-pass
+2. --continue-on-error
+3. --create-review-table
+4. --create-history-table
+5. --defaults-file
+6. --explain
+7. --filter
+8. --history
+9. --limit
+10. --max-line-length
+11. --order0by
+12. --output
+13. --review
+14. --since
+15. --type
+16. --until
+
+#### 3.3.3.2 用法示例
+
+1）直接分析慢查询文件
+
+```bash
+pt-query-digest  slow.log > mysql001-slow.log
+```
+
+2）分析网络流量包
+
+从3306端口抓取1000个流量包输出到文件mysql.tcp.txt：
+
+```bash
+tcpdump -s 65535 -x -nn -q -tttt -i any -c 1000 port 3306 > mysql.tcp.txt
+```
+
+分析抓取的网路流量包：
+
+```bash
+pt-query-digest --type tcpdump mysql.tcp.txt> slow_report9.log
+```
+
+3）分析pocesslist的输出
+
+```bash
+pt-query-digest --processlist h = host1
+```
+
+4）保存分析过的sql语句到表中
+
+```bash
+pt-query-digest --review h=192.168.131.99 --no-report mysql001-slow.log
+```
+
+默认保存的表是percona_schema.query_review。
+
+
+5）保存分析结果到表中
+
+```bash
+pt-query-digest --history h=192.168.131.99 --no-report mysql001-slow.log
+```
+
+默认保存的表是percona_schema.query_history。
