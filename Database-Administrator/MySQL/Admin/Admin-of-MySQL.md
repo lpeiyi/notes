@@ -544,7 +544,16 @@ mysql> select statement_digest_text("select user(),host from mysql.user where us
 
 ### 3.3.3 使用pt-query-digest解析慢查询日志
 
-#### 3.3.3.1 语法和选项
+#### 3.3.3.1 安装pt-query-digest
+
+下载Percona Toolkit：
+
+https://www.percona.com/downloads
+
+
+#### 3.3.3.2 语法和选项
+
+https://docs.percona.com/percona-toolkit/pt-query-digest.html
 
 语法：
 
@@ -571,7 +580,7 @@ pt-query-digest [OPTIONS] [FILES] [DSN]
 15. --type
 16. --until
 
-#### 3.3.3.2 用法示例
+#### 3.3.3.3 用法示例
 
 1）直接分析慢查询文件
 
