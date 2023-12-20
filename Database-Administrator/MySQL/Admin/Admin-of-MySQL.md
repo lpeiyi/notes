@@ -490,6 +490,34 @@ command_type: Query
 
 **一、long_query_time**
 
+规定了查询时间超过此参数值被定义为慢SQL，默认是10s，可以按需调整。
+
+```sql
+mysql> show variables like 'long_query_time';
++-----------------+-----------+
+| Variable_name   | Value     |
++-----------------+-----------+
+| long_query_time | 10.000000 |
++-----------------+-----------+
+1 row in set (0.01 sec)
+```
+
+例如，测试的时候可以将此参数设置为0s：
+
+```sql
+mysql> set long_query_time=0;
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> show variables like 'long_query_time';
++-----------------+----------+
+| Variable_name   | Value    |
++-----------------+----------+
+| long_query_time | 0.000000 |
++-----------------+----------+
+1 row in set (0.00 sec)
+
+```
+
 **二、slow_query_log**
 
 启用慢查询日志：
@@ -544,16 +572,27 @@ mysql> select statement_digest_text("select user(),host from mysql.user where us
 
 ### 3.3.3 使用pt-query-digest解析慢查询日志
 
+pt-query-digest是Percona Toolkit的一个工具，用于分析MySQL的慢查询日志文件、通用查询日志文件和二进制日志文件中的查询，也可以分析SHOW PROCESSLIST命令输出的结果和tcpdump抓取的MySQL协议数据（如：网络流量包）。默认情况下，对所有分析的查询按摘要分组，分析结果按查询时间降序输出。
+
+官方参考文档：https://docs.percona.com/percona-toolkit/pt-query-digest.html
+
 #### 3.3.3.1 安装pt-query-digest
 
-下载Percona Toolkit：
+**一、下载Percona Toolkit：**
 
-https://www.percona.com/downloads
+```bash
+[mysql@mysql001 ~]$ wget percona.com/get/pt-query-digest
+```
 
+**二、赋权**
+
+```bash
+[mysql@mysql001 ~]$ chmod +775 pt-query-digest
+```
+
+完成赋权后就可以正常使用了。
 
 #### 3.3.3.2 语法和选项
-
-https://docs.percona.com/percona-toolkit/pt-query-digest.html
 
 语法：
 
@@ -585,7 +624,10 @@ pt-query-digest [OPTIONS] [FILES] [DSN]
 1）直接分析慢查询文件
 
 ```bash
-pt-query-digest  slow.log > mysql001-slow.log
+[mysql@mysql001 output]$ pt-query-digest /disk1/data/mysql001-slow.log > slow`date +"%Y%m%d"`.log
+[mysql@mysql001 output]$ ll
+total 20
+-rw-rw-r-- 1 mysql mysql 17819 Dec 20 22:51 slow20231220.log
 ```
 
 2）分析网络流量包
@@ -624,3 +666,69 @@ pt-query-digest --history h=192.168.131.99 --no-report mysql001-slow.log
 ```
 
 默认保存的表是percona_schema.query_history。
+
+
+## 3.4 二进制日志
+
+### 3.4.1 概述
+
+记录数据库的变更（DDL, DML, DCL）。记录的单位是事件，一个会话可以包含多个事件。在MySQl8.0版本开始，默认是开启二进制日志的。
+
+二进制日志文件十分重要，有以下两个用途：
+
+- **复制**：主从复制，将主服务器的二进制日志发送到从服务器上，并将这些事件应用到从服务器上，实现主从服务器数据同步。
+- **数据恢复**：在恢复全量备份后，在应用二进制日志中的事件使数据库前滚，是增量恢复或时间点恢复。
+
+二进制日志文件的三种格式：
+
+- **语句模式（STATEMENT）**：记录每条执行数据修改的sql语句，产生的日志文件较小。记录的非确定语句（now(),uuid()函数）在复制或恢复时有可能会出错。
+- **行模式（ROW）**：默认模式，不记录sql语句，仅记录被修改的记录及其被如何修改的信息，日志文件可能会比较大。能避免语句模式记录的非确定语句（now(),uuid()函数）带来的不确定性错误。
+- **混合模式（MIXED）**：默认采用语句模式，遇到非确定sql语句时采用行模式。
+
+```sql
+mysql> show variables like 'binlog_format';
++---------------+-------+
+| Variable_name | Value |
++---------------+-------+
+| binlog_format | ROW   |
++---------------+-------+
+1 row in set (0.00 sec)
+```
+
+### 3.4.2 系统参数
+
+**一、log_bin**
+
+```bash
+[mysql@mysql001 data]$ sudo vim /etc/my.cnf
+添加：
+log_bin=/disk1/data/binlog/binlog
+
+mysql> show variables like '%log_bin%';
++---------------------------------+---------------------------------+
+| Variable_name                   | Value                           |
++---------------------------------+---------------------------------+
+| log_bin                         | ON                              |
+| log_bin_basename                | /disk1/data/binlog/binlog       |
+| log_bin_index                   | /disk1/data/binlog/binlog.index |
+| log_bin_trust_function_creators | OFF                             |
+| log_bin_use_v1_row_events       | OFF                             |
+| sql_log_bin                     | ON                              |
++---------------------------------+---------------------------------+
+6 rows in set (0.00 sec)
+```
+
+```sql
+mysql> purge binary logs to 'binlog.000040';
+Query OK, 0 rows affected (0.01 sec)
+
+mysql> show binary logs;
++---------------+-----------+-----------+
+| Log_name      | File_size | Encrypted |
++---------------+-----------+-----------+
+| binlog.000040 |         0 | No        |
+| binlog.000041 |         0 | No        |
+| binlog.000042 |       157 | No        |
++---------------+-----------+-----------+
+3 rows in set (0.00 sec)
+```
