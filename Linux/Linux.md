@@ -41,7 +41,7 @@ Linux 系统中一切皆为文件（什么都用文件表示）
 
 可以对应我们虚拟机中的Host-only和NAT。
 
-![Alt text](image-1.png)
+![Alt text](image/image-1.png)
 
 ## 3.1 网络配置 ★
 ### 3.1.1 ifconfig

@@ -4,8 +4,8 @@
 [SQL优化实战](https://github.com/lpeiyi/notes/blob/main/database-optimization/Oracle/Sql-Optimization-Practice/Sql-Optimization-Practice.md)
 
 2.**数据库管理**  
-[Oracle Administrators Guide](https://github.com/lpeiyi/notes/blob/main/Database-Administrator/Oracle/Administrators-Guide/Administrators-Guide.md)
-
+[Oracle](https://github.com/lpeiyi/notes/blob/main/Database-Administrator/Oracle/Administrators-Guide/Administrators-Guide.md)   
+[MySQL](https://github.com/lpeiyi/notes/blob/main/Database-Administrator/MySQL/Admin/Admin-of-MySQL.md)
 
 3.**SQL**  
 [Oracle](https://github.com/lpeiyi/notes/blob/main/database/oracle.md)  

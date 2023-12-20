@@ -53,19 +53,19 @@
    
    https://yum.oracle.com/oracle-linux-isos.html
 
-    ![](2.2.2.png)
+    ![](image/2.2.2.png)
 
 2. Oracle Database 19c Grid Infrastructure (19.3) for Linux x86-64
    
    https://www.oracle.com/database/technologies/oracle19c-linux-downloads.html
 
-   ![](2.2.3.png)
+   ![](image/2.2.3.png)
 
 **二、安装Oracle Linux 7.9**
 
 参考配置：
 
-![Alt text](image-13.png)
+![Alt text](image/image-13.png)
 
 # 3 服务器基本配置
 
@@ -73,7 +73,7 @@
 
 官方文档参考：[Operating System Checklist](https://docs.oracle.com/en/database/oracle/oracle-database/19/cwlin/operating-system-checklist-for-oracle-grid-infrastructure-and-oracle-rac.html)
 
-![Alt text](image-8.png)
+![Alt text](image/image-8.png)
 
 ```bash
 [root@lu9up01 ~]# cat /etc/redhat-release
@@ -90,9 +90,9 @@ Linux 7的内核版本需要大于等于Red Hat Enterprise Linux 7.5: 3.10.0-862
 
 ip地址根据[1-环境规划](#1-环境规划)分配。
 
-![Alt text](image-11.png)
+![Alt text](image/image-11.png)
 
-![Alt text](image-12.png)
+![Alt text](image/image-12.png)
 
 参考配置：
 
@@ -169,7 +169,7 @@ lu9up01
 
 官方文档参考：[Server Hardware Checklist](https://docs.oracle.com/en/database/oracle/oracle-database/19/cwlin/server-hardware-checklist-for-oracle-grid-infrastructure.html)
 
-![](image-7.png)
+![](image/image-7.png)
 
 Oracle Grid Infrastructure安装的至少8GB。
 
@@ -184,7 +184,7 @@ Swap:       8388604           0     8388604
 
 官方文档参考：[Server Configuration Checklist](https://docs.oracle.com/en/database/oracle/oracle-database/19/cwlin/server-configuration-checklist-for-oracle-grid-infrastructure.html)
 
-![Alt text](image-9.png)
+![Alt text](image/image-9.png)
 
 内存在4 GB到16 GB之间：等于RAM
 内存大于16 GB：16 GB
@@ -415,7 +415,7 @@ repolist: 15,282
 
 Oracle数据库预安装RPM会执行以下操作：
 
-![Alt text](image-10.png)
+![Alt text](image/image-10.png)
 
 1. 下载并安装安装 Oracle Grid Infrastructure 和 Oracle Database所需的任何附加 RPM 软件包，并解决任何依赖关系；
 2. 创建一个oracle用户，并为oracle用户创建oinstall和dba组；
@@ -676,7 +676,7 @@ vmware-vdiskmanager.exe -c -s 16Gb -a lsilogic -t 2 "E:\Machine\Oracle-Linux\19c
 
 虚拟磁盘文件创建好后，还要把这些盘加到`两台虚拟机`里，通过编辑虚拟机的`.vmx`文件添加。
 
-![Alt text](image-24.png)
+![Alt text](image/image-24.png)
 
 打开后在文件末尾处添加以下内容并保存，每台都要添加：
 
@@ -720,31 +720,31 @@ disk.EnableUUID = "TRUE"
 
 1 在虚拟机设置中选择添加：
 
-![Alt text](image-14.png)
+![Alt text](image/image-14.png)
 
 2 添加硬盘：
 
-![Alt text](image-15.png)
+![Alt text](image/image-15.png)
 
 3 磁盘类型选择scsi：
 
-![Alt text](image-16.png)
+![Alt text](image/image-16.png)
 
 4 创建新的磁盘：
 
-![Alt text](image-19.png)
+![Alt text](image/image-19.png)
 
 5 修改磁盘容量（个人喜欢只创建单个磁盘文件，看起来比较舒服。可以默认创建多个文件）：
 
-![Alt text](image-17.png)
+![Alt text](image/image-17.png)
 
 6 指定路径和磁盘文件名：
 
-![Alt text](image-18.png)
+![Alt text](image/image-18.png)
 
 以上步骤创建了data01磁盘，以同样的方式创建data02、fra01、fra02磁盘。
 
-![Alt text](image-22.png)
+![Alt text](image/image-22.png)
 
 二、节点2基于节点1创建的磁盘创建：
 
@@ -754,19 +754,19 @@ disk.EnableUUID = "TRUE"
 
 4 使用现有虚拟磁盘：
 
-![Alt text](image-20.png)
+![Alt text](image/image-20.png)
 
 5 选择节点1刚刚创建的磁盘：
 
-![Alt text](image-21.png)
+![Alt text](image/image-21.png)
 
 data01创建完成，以同样的方式创建data02、fra01、fra02磁盘。
 
-![Alt text](image-23.png)
+![Alt text](image/image-23.png)
 
 三、修改虚拟机配置文件
 
-![Alt text](image-24.png)
+![Alt text](image/image-24.png)
 
 虚拟磁盘文件创建好后，还要把这些盘加到虚拟机里，两台虚拟机都要添加。
 
@@ -1011,61 +1011,61 @@ Launching Oracle Grid Infrastructure Setup Wizard...
 
 三、创建新的集群
 
-![Alt text](image-6.png)
+![Alt text](image/image-6.png)
 
-![Alt text](image-25.png)
+![Alt text](image/image-25.png)
 
 四、配置集群名称以及scan名称
 
 注意scan name要和/etc/hosts文件的保持一致，不配置GNS。
 
-![Alt text](image-26.png)
+![Alt text](image/image-26.png)
 
 五、节点互信
 
 点击add：
 
-![Alt text](image-27.png)
+![Alt text](image/image-27.png)
 
 输入节点2的public ip和vip的映射主机名：
 
-![Alt text](image-28.png)
+![Alt text](image/image-28.png)
 
 输入grid密码（两个节点的密码必须一致），先点击setup，后点击test：
 
-![Alt text](image-29.png)
+![Alt text](image/image-29.png)
 
-![Alt text](image-30.png)
+![Alt text](image/image-30.png)
 
 六、公网、私网网段选择
 
 网卡和ip网段对应上，19C心跳网段需要选ASM & Private，用于ASM实例的托管：
 
-![Alt text](image-31.png)
+![Alt text](image/image-31.png)
 
 七、选择ASM存储类型
 
-![Alt text](image-32.png)
+![Alt text](image/image-32.png)
 
 八、不安装GIMR
 
-![Alt text](image-33.png)
+![Alt text](image/image-33.png)
 
 九、创建ASM磁盘组
 
 前面创建好ASM磁盘后，这里会自动识别路径。
 
-![Alt text](image-35.png)
+![Alt text](image/image-35.png)
 
 我这里暂时只添加了一块磁盘，冗余类型选择了外部冗余。如果你添加一块以上磁盘，可以选择常规冗余，并指定故障组。
 
-![Alt text](image-34.png)
+![Alt text](image/image-34.png)
 
 十、创建sys和asm密码
 
 我喜欢设置为相同的密码。
 
-![Alt text](image-36.png)
+![Alt text](image/image-36.png)
 
 如果设置得太简单，会跳出警告，忽略，选择yes。
 
@@ -1073,48 +1073,48 @@ Launching Oracle Grid Infrastructure Setup Wizard...
 
 故障隔离：
 
-![Alt text](image-37.png)
+![Alt text](image/image-37.png)
 
 EM也保持默认，比较费资源，不开：
 
-![Alt text](image-38.png)
+![Alt text](image/image-38.png)
 
 权限用户组：
 
-![Alt text](image-39.png)
+![Alt text](image/image-39.png)
 
 确认grid base目录，默认：
 
-![Alt text](image-40.png)
+![Alt text](image/image-40.png)
 
 库存目录：
 
-![Alt text](image-41.png)
+![Alt text](image/image-41.png)
 
 这里可以选择自动root执行脚本，不选，嫌麻烦可以选：
 
-![Alt text](image-42.png)
+![Alt text](image/image-42.png)
 
 十二、预安装检查
 
 ASM和DNS有问题，点击修复：
 
-![Alt text](image-43.png)
+![Alt text](image/image-43.png)
 
 修复后DNS还有问题，由于我们只配了一个SCAN，所以关于DNS相关的都无视，选择ignore：
 
-![Alt text](image-45.png)
+![Alt text](image/image-45.png)
 
 注意，除了DNS可以忽略，如果还有其他问题一定要修复，例如swap交换区不足需要添加好后回来点击`Check 
 Again`。添加swap参考文章《添加swap》https://www.modb.pro/db/1721605971427024896 。
 
 十三、开始安装
 
-![Alt text](image-44.png)
+![Alt text](image/image-44.png)
 
 十四、root下执行脚本
 
-![Alt text](image-46.png)
+![Alt text](image/image-46.png)
 
 两节点顺序执行`orainstRoot.sh`和`root.sh`，先节点1执行完，再节点2执行，过程会有点久：
 
