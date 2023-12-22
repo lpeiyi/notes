@@ -3263,7 +3263,7 @@ select /*+index(t index_name)*/ from tab t;
 --不收集&col_name字段上的直方图信息(其他字段已有的直方图信息不受影响）
 exec dbms_stats.set_table_prefs('&owner','&tab_name','method_opt','for columns &col_name size 1');
 
---再一次收集统计信息，清除&col_name字段上的直方图信息（模拟自动收集任务）
+--再一次收集统计信息，清除col_name字段上的直方图信息（模拟自动收集任务）
 exec dbms_stats.gather_table_stats('&owner','&table_name');
 ```
 
