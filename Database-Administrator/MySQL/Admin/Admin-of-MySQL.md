@@ -486,11 +486,26 @@ command_type: Query
 
 ## 3.3 慢查询日志
 
-### 3.3.1 慢查询配置参数
+慢速查询日志记录的是执行时间超过[long_query_time]()秒和检查的行数超过[min_examined_row_limit]()的SQL语句，这些语句通常是需要进行优化的。
+
+官方参考文档：https://dev.mysql.com/doc/refman/8.0/en/slow-query-log.html
+
+### 3.3.1 慢查询日志的配置参数
+
+服务器使用以下顺序的控制参数来决定是否将查询语句写入慢查询日志：
+
+1. 查询必须不是管理语句（如alter、optimize table等），或者必须启用log_slow_admin_statements参数记录管理类语句；
+2. 查询必须至少花费了long_query_time秒，或者必须启用log_queries_not_using_indexes，并且查询的索引没有行限制（如全表扫描、索引全扫描等）；
+3. 查询必须至少检索了min_examined_row_limit行；
+4. 不被参数log_throttle_queries_not_using_indexes设置阈值限制写入慢sql日志。
+
+下面介绍这些参数：
 
 **一、long_query_time**
 
-规定了查询时间超过此参数值被定义为慢SQL，默认是10s，可以按需调整。
+规定了查询时间超过此参数值被定义为慢SQL，状态变量Slow_queries记录了慢查询SQL的数量。long_query_time的单位为秒，可以设置成小数，精确到微妙。最小值为0，最大值为31536000，即365天，默认值为10。
+
+查看当前设置：
 
 ```sql
 mysql> show variables like 'long_query_time';
@@ -502,23 +517,38 @@ mysql> show variables like 'long_query_time';
 1 row in set (0.01 sec)
 ```
 
-例如，测试的时候可以将此参数设置为0s：
+查看慢sql数量：
 
 ```sql
-mysql> set long_query_time=0;
+mysql> show status like 'slow_queries';
++---------------+-------+
+| Variable_name | Value |
++---------------+-------+
+| Slow_queries  | 5     |
++---------------+-------+
+1 row in set (0.01 sec)
+
+```
+
+将此参数设置为5：
+
+```sql
+mysql> set long_query_time=5;
 Query OK, 0 rows affected (0.00 sec)
 
 mysql> show variables like 'long_query_time';
 +-----------------+----------+
 | Variable_name   | Value    |
 +-----------------+----------+
-| long_query_time | 0.000000 |
+| long_query_time | 5.000000 |
 +-----------------+----------+
 1 row in set (0.00 sec)
 
 ```
 
 **二、slow_query_log**
+
+此参数决定是否激活慢sql日志，默认值是off，即关闭。
 
 启用慢查询日志：
 
@@ -529,6 +559,8 @@ Query OK, 0 rows affected (0.00 sec)
 
 **三、slow_query_log_file**
 
+此参数指定慢sql日志的文件路径和文件名，默认位置在数据目录datadir中，默认文件名是hostname-slow.log。
+
 ```sql
 mysql> show variables like 'slow_query_log_file';
 +---------------------+-------------------------------+
@@ -537,22 +569,66 @@ mysql> show variables like 'slow_query_log_file';
 | slow_query_log_file | /disk1/data/mysql001-slow.log |
 +---------------------+-------------------------------+
 1 row in set (0.00 sec)
+```
 
+查看慢sql日志文件：
 
+```bash
 [mysql@mysql001 log]$ tailf /disk1/data/mysql001-slow.log
 /usr/sbin/mysqld, Version: 8.0.34 (MySQL Community Server - GPL). started with:
 Tcp port: 3306  Unix socket: /var/lib/mysql/mysql.sock
 Time                 Id Command    Argument
-```
+# Time: 2023-12-20T22:44:21.890879+08:00
+# User@Host: root[root] @ localhost []  Id:     9
+# Query_time: 0.009038  Lock_time: 0.000008 Rows_sent: 0  Rows_examined: 0 Thread_id: 9 Errno: 0 Killed: 0 Bytes_received: 286 Bytes_sent: 92 Read_first: 0 Read_last: 0 Read_key: 12 Read_next: 0 Read_prev: 0 Read_rnd: 0 Read_rnd_next: 1 Sort_merge_passes: 0 Sort_range_count: 0 Sort_rows: 0 Sort_scan_count: 1 Created_tmp_disk_tables: 0 Created_tmp_tables: 1 Start: 2023-12-20T22:44:21.881841+08:00 End: 2023-12-20T22:44:21.890879+08:00
+SET timestamp=1703083461;
+select f.title, count(*) as cnt
+  from sakila.rental r
+  join sakila.inventory i
+    on r.inventory_id = i.inventory_id
+  join sakila.film f
+    on i.film_id = f.film_id
+ where r.rental_date between '2005-03-01' and '2005-03-31'
+ group by f.film_id
+ order by cnt desc
+ limit 10;
+ ```
 
-**四、log_slow_extra**
+**四、log_queries_not_using_indexes**
+
+启用该变量，会记录期望检索所有行的查询语句，也就是说做表全扫描。使用索引的查询也会被记录。例如，使用完整索引扫描的查询使用索引，但会记录日志，因为索引不会限制行数。默认值是false。
+
+
+**五、min_examined_row_limit**
+
+参数规定了只有当检索的行数超过了参数值的sql语句才会被记录到慢sql日志文件中，默认值是0，没有限制。可以和上一个参数`log_queries_not_using_indexes`搭配使用，可以避免记录一些访问小表的查询。
+
+
+**六、log_throttle_queries_not_using_indexes**
+
+该参数限制每分钟记录到慢查询日志中的查询语句数量，默认值是0，不限制。
+
+**七、log_slow_extra**
+
+参数log_slow_extra从MySQL 8.0.14开始可用，当启用时，将记录与慢sql相关的额外信息，如状态参数Handler_%。参数默认值为off，建议打开，将参数设置为on。
 
 ```sql
 mysql> set global log_slow_extra=on;
 Query OK, 0 rows affected (0.00 sec)
 ```
 
-### 3.3.2 statement_digest_text解析慢sql
+### 3.3.2 使用mysqldumpslow解释慢查询日志
+
+MySQL慢速查询日志包含执行时间较长的查询信息，且包含的记录较多时，看起来比较困难。可以使用mysqldumpslow解析MySQL慢速查询日志文件，并总结日志内容。
+
+**一、摘要分析**
+
+mysqldumpslow会对查询进行摘要分析，8.0版本新添的两个分析摘要函数如下：
+
+1. statement_digest_text()：返回摘要文本；
+2. statement_digest()：返回摘要hashvalue。
+
+用法如下：
 
 ```sql
 mysql> select statement_digest_text("select user(),host from mysql.user where user = 'lu9up'");
@@ -561,14 +637,57 @@ mysql> select statement_digest_text("select user(),host from mysql.user where us
 +----------------------------------------------------------------------------------+
 | SELECT SYSTEM_USER ( ) , HOST FROM `mysql` . `user` WHERE SYSTEM_USER = ?        |
 +----------------------------------------------------------------------------------+
-1 row in set (0.01 sec)
+1 row in set (0.00 sec)
+
+mysql> select statement_digest("select user(),host from mysql.user where user = 'lu9up'");
++-----------------------------------------------------------------------------+
+| statement_digest("select user(),host from mysql.user where user = 'lu9up'") |
++-----------------------------------------------------------------------------+
+| 12984e6ff7cbdbd28e2a377375af873fcd606891f82c670a74c04db83f7ac09c            |
++-----------------------------------------------------------------------------+
+1 row in set (0.00 sec)
 ```
 
+**二、mysqldumpslow操作**
+
+调用语法：
 
 ```bash
-[mysql@mysql001 data]$ mysqldumpslow -s c  -t 2 /disk1/data/mysql001-slow.log
+mysqldumpslow [options] [log_file ...]
 ```
 
+options：
+
+![Alt text](image-1.png)
+
+`-s`指定排序方式，默认是at，根据平均时间排序，共有七种排序方式：
+
+![Alt text](image-2.png)
+
+**mysqldumpslow操作示例**：
+
+使用mysqldumpslow对慢查询日志文件进行分析，输出平均执行时间最久的两条查询：
+
+```bash
+[mysql@mysql001 ~]$ mysqldumpslow -s at -t 2 /disk1/data/mysql001-slow.log
+
+Reading mysql slow query log from /disk1/data/mysql001-slow.log
+Count: 1  Time=0.01s (0s)  Lock=0.00s (0s)  Rows=0.0 (0), root[root]@localhost
+  select f.title, count(*) as cnt
+  from sakila.rental r
+  join sakila.inventory i
+  on r.inventory_id = i.inventory_id
+  join sakila.film f
+  on i.film_id = f.film_id
+  where r.rental_date between 'S' and 'S'
+  group by f.film_id
+  order by cnt desc
+  limit N
+
+Count: 8  Time=0.00s (0s)  Lock=0.00s (0s)  Rows=4.9 (39), root[root]@localhost
+  show variables like 'S'
+
+```
 
 ### 3.3.3 使用pt-query-digest解析慢查询日志
 
@@ -602,22 +721,27 @@ pt-query-digest [OPTIONS] [FILES] [DSN]
 
 选项：
 
-1. --ask-pass
-2. --continue-on-error
-3. --create-review-table
-4. --create-history-table
-5. --defaults-file
-6. --explain
-7. --filter
-8. --history
-9. --limit
-10. --max-line-length
-11. --order0by
-12. --output
-13. --review
-14. --since
-15. --type
-16. --until
+| optition name | comment |
+| - | - |
+| --ask-pass | 连接MySQL时提示输入密码。 |
+| --continue-on-error | 即使出现错误，也要继续解析，默认值时yes。该工具不会永远继续:一旦任何进程导致100个错误，它就会停止。 |
+| --create-review-table | 使用--review选项将分析结果输出到表中时，如果表不存在，创建它，默认值是yes。 |
+| --create-history-table | 使用--history选项将分析结果输出到表中时，如果表不存在，创建它，默认值是yes。 |
+| --defaults-file | 指定mysql的参数文件名，必须给出一个绝对路径名。 |
+| --explain | 使用此DSN对示例查询运行EXPLAIN并打印结果。 |
+| --filter | 该选项是一个Perl代码字符串或包含Perl代码的文件，使用此参数对要分析的文件进行过滤后再分析，将不符合Perl代码的时间全部忽略。 |
+|  --review | 保存分析结果到表中，有重复的查询在表中时，不会再记录。只保存分析过的sql语句，不包含分析结果。 |
+| --history | 保存分析结果到表中，有重复的查询在表中时，也会记录，但时间不一样。与review不同，不仅保存分析的sql语句，也包含分析结果。 |
+| --limit | 将输出限制为给定的百分比或SQL语句数量。 |
+|  --max-line-length | 把输出行的长度修剪到这个长度，0表示不裁剪。 |
+|  --order-by | 按此属性和聚合函数对事件进行排序，默认为Query_time:sum。 |
+|  --output | 指定分析结果的输出格式。 |
+|  --since | 指定分析从什么时间开始的sql语句。 |
+|  --until | 指定分析的sql语句的截至时间。 |
+|  --type | 指定日志文件的类型，可以是genlog、binlog、slowlog、tcpdump、rawlog等。 |
+
+选项的具体使用细则参考官方文档：https://docs.percona.com/percona-toolkit/pt-query-digest.html#options
+
 
 #### 3.3.3.3 用法示例
 
@@ -717,6 +841,8 @@ mysql> show variables like '%log_bin%';
 +---------------------------------+---------------------------------+
 6 rows in set (0.00 sec)
 ```
+
+查看binlog：
 
 ```sql
 mysql> purge binary logs to 'binlog.000040';
