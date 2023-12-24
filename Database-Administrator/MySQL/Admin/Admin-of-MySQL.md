@@ -858,3 +858,99 @@ mysql> show binary logs;
 +---------------+-----------+-----------+
 3 rows in set (0.00 sec)
 ```
+
+# 4 安全
+
+# 5 information_schema数据库
+
+查看所有数据库容量大小:
+
+```sql
+select table_schema,count(*) tables,
+	   sum(table_rows) as table_rows,
+	   concat(sum(round(data_length/1024/1024, 2)),'m') as data,
+	   concat(sum(round(index_length/1024/1024, 2)),'m') as idx,
+	   concat(sum(round((data_length+index_length)/1024/1024, 2)),'m') as  total
+  from information_schema.tables
+ group by table_schema
+ order by sum(data_length) desc, sum(index_length) desc;
+
++--------------------+--------+------------+-------+-------+-------+
+| TABLE_SCHEMA       | tables | table_rows | data  | idx   | total |
++--------------------+--------+------------+-------+-------+-------+
+| sakila             |     23 |      48099 | 4.20m | 2.31m | 6.49m |
+| mysql              |     38 |       4276 | 2.47m | 0.36m | 2.75m |
+| sys                |    101 |          6 | 0.02m | 0.00m | 0.02m |
+| information_schema |     79 |          0 | 0.00m | 0.00m | 0.00m |
+| performance_schema |    111 |    2962186 | 0.00m | 0.00m | 0.00m |
++--------------------+--------+------------+-------+-------+-------+
+5 rows in set (0.01 sec)
+```
+
+查看某数据库下最大的十个表：
+
+```sql
+select table_schema,table_name,table_rows,
+       concat(round(data_length/1024/1024, 2),'m') data_length,
+       concat(round(index_length/1024/1024, 2),'m') index_length,
+       concat(round((data_length+index_length)/1024/1024,2),'m') total
+  from information_schema.tables
+ where table_schema = 'sakila'
+ order by (data_length+index_length) desc
+ limit 10;
++--------------+---------------+------------+-------------+--------------+-------+
+| TABLE_SCHEMA | TABLE_NAME    | TABLE_ROWS | data_length | index_length | total |
++--------------+---------------+------------+-------------+--------------+-------+
+| sakila       | rental        |      16419 | 1.52m       | 1.14m        | 2.66m |
+| sakila       | payment       |      16500 | 1.52m       | 0.61m        | 2.13m |
+| sakila       | inventory     |       4581 | 0.17m       | 0.19m        | 0.36m |
+| sakila       | film          |       1000 | 0.19m       | 0.08m        | 0.27m |
+| sakila       | film_actor    |       5462 | 0.19m       | 0.08m        | 0.27m |
+| sakila       | film_text     |       1000 | 0.17m       | 0.02m        | 0.19m |
+| sakila       | customer      |        599 | 0.08m       | 0.05m        | 0.13m |
+| sakila       | address       |        603 | 0.09m       | 0.02m        | 0.11m |
+| sakila       | staff         |          2 | 0.06m       | 0.03m        | 0.09m |
+| sakila       | film_category |       1000 | 0.06m       | 0.02m        | 0.08m |
++--------------+---------------+------------+-------------+--------------+-------+
+10 rows in set (0.01 sec)
+```
+
+查看非InnoDB引擎的业务表：
+
+```sql
+select table_name,table_schema,engine 
+  from information_schema.tables
+ where engine!='innodb' 
+   and table_schema not in('mysql','information_schema','performance_schema'); 
+```
+
+查看没有主键或唯一索引的表：
+
+```sql
+select t.table_schema,
+       t.table_name
+  from information_schema.tables t
+ inner join information_schema.columns c 
+	on t.table_schema = c.table_schema
+   and t.table_name = c.table_name
+ where t.table_schema not in('mysql','information_schema','performance_schema')
+   and c.table_type = 'base table'
+group by t.table_schema,t.table_name
+having group_concat(colums_key) not regexp 'pri|uni';
+```
+
+# 6 performance_schema数据库
+
+## 6.7 用例
+
+### 6.7.1 监控sql语句的执行性能
+
+
+
+```sql
+select thread_id,event_name,source,sys.format_time(timer_wait),sys.format_time(lock_time),
+	   sql_text,current_schema,message_text,rows_affected,rows_sent,rows_examined
+  from performance_schema.events_statements_history
+ where current_schema != 'performance_schema'
+ order by timer_wait desc limit 3\G
+ ```
