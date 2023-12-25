@@ -3096,7 +3096,7 @@ select * from emp1 where decode(substr(ename,1,4),'KING','king',null,'null','oth
 
 # 4 执行计划
 
-### 4.1 SQL执行计划突然变差处理
+## 4.1 SQL执行计划突然变差处理
 
 在生产环境中，有时会遇到执行计划突然变差。
 
