@@ -954,3 +954,107 @@ select thread_id,event_name,source,sys.format_time(timer_wait),sys.format_time(l
  where current_schema != 'performance_schema'
  order by timer_wait desc limit 3\G
  ```
+
+# 8 逻辑备份
+
+## 8.1 逻辑备份和物理备份的区别
+
+## 8.2 mysqldump
+
+### 8.2.1 语法
+
+### 8.2.2 options
+
+### 8.2.3 常见用法
+
+**一、以SQL格式备份**
+
+```sql
+[mysql@mysql001 bak]$ mysqldump sakila > sakila.bak20240101.sql
+[mysql@mysql001 bak]$ mysqldump sakila actor > sakila_actor.bak20240101.sql
+[mysql@mysql001 bak]$ mysqldump --all-databases --routines --events > all_databases.bak20240101.sql
+[mysql@mysql001 bak]$ mysqldump --all-databases --master-data --single-transation > all_databases2.bak20240101.sql
+[mysql@mysql001 bak]$ mysqldump --databases sakila --skip-add-drop-table --no-create-info --replace > to_test20240101.sql
+```
+
+**二、带分隔符文本备份**
+
+```sql
+mysql> show variables like 'secure_file_priv';
++------------------+-----------------------+
+| Variable_name    | Value                 |
++------------------+-----------------------+
+| secure_file_priv | /var/lib/mysql-files/ |
++------------------+-----------------------+
+1 row in set (0.00 sec)
+
+mysql> quit
+Bye
+[mysql@mysql001 bak]$ mysqldump --tab=/var/lib/mysql-files/ sakila
+[mysql@mysql001 mysql-files]$ ll /var/lib/mysql-files/
+total 3084
+-rw-rw-r-- 1 mysql mysql    2559 Jan  1 02:02 actor_info.sql
+-rw-rw-r-- 1 mysql mysql    1610 Jan  1 02:02 actor.sql
+-rw-r----- 1 mysql mysql    7432 Jan  1 02:02 actor.txt
+-rw-rw-r-- 1 mysql mysql    1978 Jan  1 02:02 address.sql
+-rw-r----- 1 mysql mysql   69316 Jan  1 02:02 address.txt
+-rw-rw-r-- 1 mysql mysql    1537 Jan  1 02:02 category.sql
+-rw-r----- 1 mysql mysql     478 Jan  1 02:02 category.txt
+-rw-rw-r-- 1 mysql mysql    1736 Jan  1 02:02 city.sql
+-rw-r----- 1 mysql mysql   21901 Jan  1 02:02 city.txt
+-rw-rw-r-- 1 mysql mysql    1537 Jan  1 02:02 country.sql
+-rw-r----- 1 mysql mysql    3593 Jan  1 02:02 country.txt
+-rw-rw-r-- 1 mysql mysql    2301 Jan  1 02:02 customer_list.sql
+-rw-rw-r-- 1 mysql mysql    3175 Jan  1 02:02 customer.sql
+-rw-r----- 1 mysql mysql   58939 Jan  1 02:02 customer.txt
+-rw-rw-r-- 1 mysql mysql    1816 Jan  1 02:02 film_actor.sql
+-rw-r----- 1 mysql mysql  149464 Jan  1 02:02 film_actor.txt
+-rw-rw-r-- 1 mysql mysql    1863 Jan  1 02:02 film_category.sql
+-rw-r----- 1 mysql mysql   26316 Jan  1 02:02 film_category.txt
+-rw-rw-r-- 1 mysql mysql    2447 Jan  1 02:02 film_list.sql
+-rw-rw-r-- 1 mysql mysql    5908 Jan  1 02:02 film.sql
+-rw-rw-r-- 1 mysql mysql    1498 Jan  1 02:02 film_text.sql
+-rw-r----- 1 mysql mysql  113970 Jan  1 02:02 film_text.txt
+-rw-r----- 1 mysql mysql  193528 Jan  1 02:02 film.txt
+-rw-rw-r-- 1 mysql mysql    1938 Jan  1 02:02 inventory.sql
+-rw-r----- 1 mysql mysql  140417 Jan  1 02:02 inventory.txt
+-rw-rw-r-- 1 mysql mysql    1533 Jan  1 02:02 language.sql
+-rw-r----- 1 mysql mysql     180 Jan  1 02:02 language.txt
+-rw-rw-r-- 1 mysql mysql    2684 Jan  1 02:02 nicer_but_slower_film_list.sql
+-rw-rw-r-- 1 mysql mysql    3218 Jan  1 02:02 payment.sql
+-rw-r----- 1 mysql mysql  985743 Jan  1 02:02 payment.txt
+-rw-rw-r-- 1 mysql mysql    3305 Jan  1 02:02 rental.sql
+-rw-r----- 1 mysql mysql 1214415 Jan  1 02:02 rental.txt
+-rw-rw-r-- 1 mysql mysql    2251 Jan  1 02:02 sales_by_film_category.sql
+-rw-rw-r-- 1 mysql mysql    2454 Jan  1 02:02 sales_by_store.sql
+-rw-rw-r-- 1 mysql mysql    2223 Jan  1 02:02 staff_list.sql
+-rw-rw-r-- 1 mysql mysql    2198 Jan  1 02:02 staff.sql
+-rw-r----- 1 mysql mysql   37150 Jan  1 02:02 staff.txt
+-rw-rw-r-- 1 mysql mysql    1945 Jan  1 02:02 store.sql
+-rw-r----- 1 mysql mysql      52 Jan  1 02:02 store.txt
+```
+
+**三、修改备份文件的对象名**
+
+```sql
+[mysql@mysql001 bak]$ sed -i 's/'actor'/'newactor'/g' sakila.sql
+```
+
+### 8.2.4 恢复
+
+**一、以SQL格式备份**
+
+```sql
+[mysql@mysql001 bak]$ mysql sakila < sakila_actor.bak20240101.sql
+
+```
+
+**二、带分隔符文本备份**
+
+```sql
+[mysql@mysql001 mysql-files]$ cd /var/lib/mysql-files/
+[mysql@mysql001 mysql-files]$ mysql sakila < actor.sql
+[mysql@mysql001 mysql-files]$ mysqlimport sakila /var/lib/mysql-files/actor.txt
+```
+
+
