@@ -1058,3 +1058,125 @@ total 3084
 ```
 
 
+## 8.3 mysqlpump
+
+### 8.3.1 并行备份
+
+```sql
+[mysql@mysql001 ~]$ mysqlpump --parallel-schemas=4:sakila > /disk1/bak/sakila1.bak20230101.sql
+```
+
+### 8.3.3 过滤选项
+
+### 8.3.4 备份用户
+
+```sql
+[mysql@mysql001 ~]$ mysqlpump --exclude-databases=% --users > /disk1/bak/users.bak20230101.sql
+[mysql@mysql001 ~]$ mysqlpump --exclude-databases=% --include-users=lu9up --users > /disk1/bak/lu9up.bak20230101.sql
+[mysql@mysql001 ~]$ mysqlpump --exclude-databases=% --exclude-users=root --users > /disk1/bak/users_exclud_root.bak20230101.sql
+```
+
+## 8.4 mydumper
+
+https://github.com/mydumper/mydumper
+
+- Parallelism (hence, speed) and performance (avoids expensive character set conversion routines, efficient code overall)
+- Easier to manage output (separate files for tables, dump metadata, etc, easy to view/parse data)
+- Consistency - maintains snapshot across all threads, provides accurate master and slave log positions, etc
+- Manageability - supports PCRE for specifying database and tables inclusions and exclusions
+
+### 8.4.1 安装
+
+**一、安装mydumper**
+
+```bash
+[mysql@mysql001 mydumper]$ release=$(curl -Ls -o /dev/null -w %{url_effective} https://github.com/mydumper/mydumper/releases/latest | cut -d'/' -f8)
+[mysql@mysql001 mydumper]$ sudo yum install -y https://github.com/mydumper/mydumper/releases/download/${release}/mydumper-${release:1}.el7.x86_64.rpm
+```
+
+MyDumper is a MySQL Logical Backup Tool. It has 2 tools:
+
+- mydumper which is responsible to export a consistent backup of MySQL databases
+- myloader reads the backup from mydumper, connects the to destination database and imports the backup.
+
+**二、安装依赖软件**
+
+```bash
+[mysql@mysql001 mydumper]$ sudo yum install -y cmake gcc gcc-c++ git make
+[mysql@mysql001 mydumper]$ sudo yum install -y glib2-devel openssl-devel pcre-devel zlib-devel libzstd-devel
+```
+
+### 8.4.2 使用
+
+**备份：**
+
+```sql
+[mysql@mysql001 sakila]$ mydumper -u root -p Mysql123. -P 3306 -h localhost -B sakila -o /disk1/bak/sakila/
+[mysql@mysql001 sakila]$ ls
+metadata                              sakila.film.00000.sql                              sakila.payment-schema.sql
+sakila.actor.00000.sql                sakila.film_actor.00000.sql                        sakila.rental.00000.sql
+sakila.actor_info-schema.sql          sakila.film_actor-schema.sql                       sakila.rental-schema.sql
+sakila.actor_info-schema-view.sql     sakila.film_category.00000.sql                     sakila.sales_by_film_category-schema.sql
+sakila.actor-schema.sql               sakila.film_category-schema.sql                    sakila.sales_by_film_category-schema-view.sql
+sakila.address.00000.sql              sakila.film_list-schema.sql                        sakila.sales_by_store-schema.sql
+sakila.address-schema.sql             sakila.film_list-schema-view.sql                   sakila.sales_by_store-schema-view.sql
+sakila.category.00000.sql             sakila.film-schema.sql                             sakila-schema-create.sql
+sakila.category-schema.sql            sakila.film_text.00000.sql                         sakila-schema-triggers.sql
+sakila.city.00000.sql                 sakila.film_text-schema.sql                        sakila.staff.00000.sql
+sakila.city-schema.sql                sakila.inventory.00000.sql                         sakila.staff_list-schema.sql
+sakila.country.00000.sql              sakila.inventory-schema.sql                        sakila.staff_list-schema-view.sql
+sakila.country-schema.sql             sakila.language.00000.sql                          sakila.staff-schema.sql
+sakila.customer.00000.sql             sakila.language-schema.sql                         sakila.store.00000.sql
+sakila.customer_list-schema.sql       sakila.nicer_but_slower_film_list-schema.sql       sakila.store-schema.sql
+sakila.customer_list-schema-view.sql  sakila.nicer_but_slower_film_list-schema-view.sql
+sakila.customer-schema.sql            sakila.payment.00000.sql
+```
+
+**恢复**
+
+```sql
+[mysql@mysql001 sakila]$ myloader -u root -p Mysql123. -P 3306 -h localhost  -B sakila -d /disk1/bak/sakila/
+```
+
+### 8.4.3 并行和一致性
+
+```sql
+[mysql@mysql001 ls_sakila]$ mydumper -u root -p Mysql123. -P 3306 -h localhost -B sakila -T sakila.actor -t 8 --rows=10000 --trx-consistency-only -o /disk1/bak/ls_sakila
+[mysql@mysql001 ls_sakila]$ mydumper -u root -p Mysql123. -P 3306 -h localhost -B sakila -T sakila.actor -t 8 --chunk-filesize 4 --trx-consistency-only -o /disk1/bak/ls_sakila
+```
+
+### 8.4.4 How to exclude (or include) databases?
+
+Once can use --regex functionality, for example not to dump mysql and test databases:
+
+```sql
+mydumper --regex '^(?!(mysql\.|test\.))'
+
+```
+
+To dump only mysql and test databases:
+
+```sql
+mydumper --regex '^(mysql\.|test\.)'
+```
+To not dump all databases starting with test:
+
+```sql
+mydumper --regex '^(?!(test))'
+```
+
+To dump specify tables in different databases (Note: The name of tables should end with $. related issue):
+
+```sql
+mydumper --regex '^(db1\.table1$|db2\.table2$)'
+```
+
+If you want to dump a couple of databases but discard some tables, you can do:
+
+```sql
+mydumper --regex '^(?=(?:(db1\.|db2\.)))(?!(?:(db1\.table1$|db2\.table2$)))'
+```
+
+Which will dump all the tables in db1 and db2 but it will exclude db1.table1 and db2.table2
+Of course, regex functionality can be used to describe pretty much any list of tables.
+
