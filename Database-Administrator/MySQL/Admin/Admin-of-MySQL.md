@@ -1180,3 +1180,50 @@ mydumper --regex '^(?=(?:(db1\.|db2\.)))(?!(?:(db1\.table1$|db2\.table2$)))'
 Which will dump all the tables in db1 and db2 but it will exclude db1.table1 and db2.table2
 Of course, regex functionality can be used to describe pretty much any list of tables.
 
+# 9 Percona XtraBackup
+
+Percona XtraBackup是一个开源的MySQL热备份实用工具，用于执行MySQL的InnoDB和XtraDB数据库的非阻塞备份。
+
+无论是24x7高负载服务器还是低事务量环境，Percona XtraBackup都能高效地进行热备份，而不会影响业务可用性和占用过多的数据库资源以及服务器性能。
+
+Percona XtraBackup有以下优势：
+
+- 免费和开源；
+- 备份效率高，十分安全可靠；
+- 备份不会阻塞事务；
+- 不会占用过多的磁盘空间和网络带宽（可压缩）；
+- 自动备份验证；
+- 恢复时间快
+- 支持流、压缩和增量MySQL备份。
+
+官方参考文档：https://docs.percona.com/percona-xtrabackup/8.0/about-xtrabackup.html
+
+## 9.1 安装
+
+手动下载地址：https://www.percona.com/downloads
+
+![Alt text](image-3.png)
+
+**一、使用YUM下载方式，下载RPM包**：
+
+```bash
+[root@mysql001 xtrabackup]$ wget https://downloads.percona.com/downloads/Percona-XtraBackup-8.0/Percona-XtraBackup-8.0.22-15/binary/redhat/7/x86_64/percona-xtrabackup-80-8.0.22-15.1.el7.x86_64.rpm
+```
+
+**二、安装**：
+
+安装可能会报错缺乏依赖软件包，根据自己实际缺的包安装：
+
+```bash
+[root@mysql001 xtrabackup]# wget http://rpmfind.net/linux/centos/7.9.2009/extras/x86_64/Packages/libev-4.15-7.el7.x86_64.rpm
+[root@mysql001 xtrabackup]# rpm -ivh libev-4.15-7.el7.x86_64.rpm
+
+[root@mysql001 xtrabackup]# yum install perl-DBD-MySQL
+```
+
+**安装Percona XtraBackup**：
+
+```bash
+[root@mysql001 xtrabackup]# rpm -ivh percona-xtrabackup-80-8.0.22-15.1.el7.x86_64.rpm
+```
+
