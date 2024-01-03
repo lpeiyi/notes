@@ -991,47 +991,12 @@ mysql> show variables like 'secure_file_priv';
 mysql> quit
 Bye
 [mysql@mysql001 bak]$ mysqldump --tab=/var/lib/mysql-files/ sakila
-[mysql@mysql001 mysql-files]$ ll /var/lib/mysql-files/
-total 3084
--rw-rw-r-- 1 mysql mysql    2559 Jan  1 02:02 actor_info.sql
--rw-rw-r-- 1 mysql mysql    1610 Jan  1 02:02 actor.sql
--rw-r----- 1 mysql mysql    7432 Jan  1 02:02 actor.txt
--rw-rw-r-- 1 mysql mysql    1978 Jan  1 02:02 address.sql
--rw-r----- 1 mysql mysql   69316 Jan  1 02:02 address.txt
--rw-rw-r-- 1 mysql mysql    1537 Jan  1 02:02 category.sql
--rw-r----- 1 mysql mysql     478 Jan  1 02:02 category.txt
--rw-rw-r-- 1 mysql mysql    1736 Jan  1 02:02 city.sql
--rw-r----- 1 mysql mysql   21901 Jan  1 02:02 city.txt
--rw-rw-r-- 1 mysql mysql    1537 Jan  1 02:02 country.sql
--rw-r----- 1 mysql mysql    3593 Jan  1 02:02 country.txt
--rw-rw-r-- 1 mysql mysql    2301 Jan  1 02:02 customer_list.sql
--rw-rw-r-- 1 mysql mysql    3175 Jan  1 02:02 customer.sql
--rw-r----- 1 mysql mysql   58939 Jan  1 02:02 customer.txt
--rw-rw-r-- 1 mysql mysql    1816 Jan  1 02:02 film_actor.sql
--rw-r----- 1 mysql mysql  149464 Jan  1 02:02 film_actor.txt
--rw-rw-r-- 1 mysql mysql    1863 Jan  1 02:02 film_category.sql
--rw-r----- 1 mysql mysql   26316 Jan  1 02:02 film_category.txt
--rw-rw-r-- 1 mysql mysql    2447 Jan  1 02:02 film_list.sql
--rw-rw-r-- 1 mysql mysql    5908 Jan  1 02:02 film.sql
--rw-rw-r-- 1 mysql mysql    1498 Jan  1 02:02 film_text.sql
--rw-r----- 1 mysql mysql  113970 Jan  1 02:02 film_text.txt
--rw-r----- 1 mysql mysql  193528 Jan  1 02:02 film.txt
--rw-rw-r-- 1 mysql mysql    1938 Jan  1 02:02 inventory.sql
--rw-r----- 1 mysql mysql  140417 Jan  1 02:02 inventory.txt
--rw-rw-r-- 1 mysql mysql    1533 Jan  1 02:02 language.sql
--rw-r----- 1 mysql mysql     180 Jan  1 02:02 language.txt
--rw-rw-r-- 1 mysql mysql    2684 Jan  1 02:02 nicer_but_slower_film_list.sql
--rw-rw-r-- 1 mysql mysql    3218 Jan  1 02:02 payment.sql
--rw-r----- 1 mysql mysql  985743 Jan  1 02:02 payment.txt
--rw-rw-r-- 1 mysql mysql    3305 Jan  1 02:02 rental.sql
--rw-r----- 1 mysql mysql 1214415 Jan  1 02:02 rental.txt
--rw-rw-r-- 1 mysql mysql    2251 Jan  1 02:02 sales_by_film_category.sql
--rw-rw-r-- 1 mysql mysql    2454 Jan  1 02:02 sales_by_store.sql
--rw-rw-r-- 1 mysql mysql    2223 Jan  1 02:02 staff_list.sql
--rw-rw-r-- 1 mysql mysql    2198 Jan  1 02:02 staff.sql
--rw-r----- 1 mysql mysql   37150 Jan  1 02:02 staff.txt
--rw-rw-r-- 1 mysql mysql    1945 Jan  1 02:02 store.sql
--rw-r----- 1 mysql mysql      52 Jan  1 02:02 store.txt
+[mysql@mysql001 full]$ ls /var/lib/mysql-files/
+actor_info.sql  category.sql  country.txt        film_actor.txt     film_text.sql  language.sql                    rental.sql                  staff.sql
+actor.sql       category.txt  customer_list.sql  film_category.sql  film_text.txt  language.txt                    rental.txt                  staff.txt
+actor.txt       city.sql      customer.sql       film_category.txt  film.txt       nicer_but_slower_film_list.sql  sales_by_film_category.sql  store.sql
+address.sql     city.txt      customer.txt       film_list.sql      inventory.sql  payment.sql                     sales_by_store.sql          store.txt
+address.txt     country.sql   film_actor.sql     film.sql           inventory.txt  payment.txt                     staff_list.sql
 ```
 
 **三、修改备份文件的对象名**
@@ -1198,32 +1163,136 @@ Percona XtraBackup有以下优势：
 
 官方参考文档：https://docs.percona.com/percona-xtrabackup/8.0/about-xtrabackup.html
 
-## 9.1 安装
+## 9.1 安装Percona XtraBackup
+
+**注意**：下载前先确认自己的服务器和数据库的版本信息，根据实际情况下载相应的版本。
 
 手动下载地址：https://www.percona.com/downloads
 
 ![Alt text](image-3.png)
 
+### 9.1.1 rpm包安装方式
+
 **一、使用YUM下载方式，下载RPM包**：
 
 ```bash
-[root@mysql001 xtrabackup]$ wget https://downloads.percona.com/downloads/Percona-XtraBackup-8.0/Percona-XtraBackup-8.0.22-15/binary/redhat/7/x86_64/percona-xtrabackup-80-8.0.22-15.1.el7.x86_64.rpm
+[root@mysql001 xtrabackup]$ sudo yum install https://repo.percona.com/yum/percona-release-latest.noarch.rpm
 ```
 
-**二、安装**：
-
-安装可能会报错缺乏依赖软件包，根据自己实际缺的包安装：
+**二、启用percona库**：
 
 ```bash
-[root@mysql001 xtrabackup]# wget http://rpmfind.net/linux/centos/7.9.2009/extras/x86_64/Packages/libev-4.15-7.el7.x86_64.rpm
-[root@mysql001 xtrabackup]# rpm -ivh libev-4.15-7.el7.x86_64.rpm
-
-[root@mysql001 xtrabackup]# yum install perl-DBD-MySQL
+[mysql@mysql001 ~]$ sudo percona-release enable-only tools release
 ```
 
-**安装Percona XtraBackup**：
+**三、依赖包下载**
 
 ```bash
-[root@mysql001 xtrabackup]# rpm -ivh percona-xtrabackup-80-8.0.22-15.1.el7.x86_64.rpm
+[mysql@mysql001 ~]$ sudo yum install lz4 zstd
 ```
+
+**三、安装**
+
+```bash
+[mysql@mysql001 ~]$ sudo yum install percona-xtrabackup-80
+```
+
+**四、检查**
+
+```bash
+[mysql@mysql001 ~]$ xtrabackup --version
+xtrabackup: recognized server arguments: --datadir=/disk1/data --log_bin=/disk1/data/binlog/binlog --innodb_log_file_size=100M
+xtrabackup version 8.0.22-15 based on MySQL server 8.0.22 Linux (x86_64) (revision id: fea8a0e)
+```
+
+**四、卸载**
+
+如果版本不可用，需要卸载重装，卸载脚本如下：
+
+```bash
+[mysql@mysql001 ~]$ yum list | grep percona
+[mysql@mysql001 ~]$ yum remove percona-xtrabackup-80.x86_64
+```
+
+### 9.1.2 tar包安装
+
+```bash
+#解压：
+[mysql@mysql001 xtrabackup]$ tar xvf percona-xtrabackup-8.0.34-29-Linux-x86_64.glibc2.17-minimal.tar.gz
+
+#简化路径：
+[mysql@mysql001 xtrabackup]$ mv percona-xtrabackup-8.0.34-29-Linux-x86_64.glibc2.17-minimal xtrabackup
+[mysql@mysql001 xtrabackup]$ cd xtrabackup
+
+#安装依赖包：
+[mysql@mysql001 xtrabackup]$ sudo yum install -y perl-Digest-MD5 perl-DBD-MySQL libev
+
+#bin目录，可执行文件
+[mysql@mysql001 bin]$ cd /home/mysql/tools/xtrabackup/xtrabackup/bin/
+[mysql@mysql001 bin]$ pwd
+/home/mysql/tools/xtrabackup/xtrabackup/bin
+
+#添加环境变量
+[mysql@mysql001 bin]$ sudo vim /etc/profile
+添加：
+export XTRABACKUP_HOME=/home/mysql/tools/xtrabackup/xtrabackup
+export PATH=$PATH:$HOME/bin:$XTRABACKUP_HOME/bin
+
+#环境变量生效
+[mysql@mysql001 bin]$ source /etc/profile
+
+#检查，包含版本号、数据路径等信息
+[mysql@mysql001 ~]$ xtrabackup --version
+2024-01-04T01:31:22.623365+08:00 0 [Note] [MY-011825] [Xtrabackup] recognized server arguments: --datadir=/disk1/data --log_bin=/disk1/data/binlog/binlog --innodb_log_file_size=100M
+xtrabackup version 8.0.34-29 based on MySQL server 8.0.34 Linux (x86_64) (revision id: 5ba706ee)
+```
+
+## 9.2 使用Percona XtraBackup
+
+### 9.2.0 报错处理
+
+报错信息如下：
+
+```bash
+[ERROR] [MY-011825] [Xtrabackup] Failed to connect to MySQL server: Can't connect to local MySQL server through socket
+```
+
+原因是由于当使用host参数为“localhost”连接Mysql服务时，会优先使用“sock文件”进行连接，而不是使用“IP:端口”进行连接，而mysql尝试使用“sock文件”进行连接时，却无法获取“sock文件”的位置。
+
+解决办法是给XtraBackup命令指定socket路径：
+
+```bash
+#添加
+[mysql@mysql001 ~]$ sudo vim /etc/my.cnf
+添加：
+[xtrabackup]
+socket=/var/lib/mysql/mysql.sock
+
+添加的这个路径和[mysqld]中的保持一致。
+
+#重启
+[mysql@mysql001 ~]$ sudo systemctl restart mysqld、
+```
+
+### 9.2.1 备份功能
+
+全量备份：
+
+```bash
+[mysql@mysql001 full]$ xtrabackup --user=root --password=Mysql123. --backup --parallel=8 --target-dir=/disk1/bak/full/
+
+[mysql@mysql001 full]$ ls /disk1/bak/full/
+backup-my.cnf  binlog.index    ibdata1  mysql.ibd           sakila  undo_001  xtrabackup_binlog_info  xtrabackup_info     xtrabackup_tablespaces
+binlog.000045  ib_buffer_pool  mysql    performance_schema  sys     undo_002  xtrabackup_checkpoints  xtrabackup_logfile
+```
+
+增量备份：
+
+```bash
+
+```
+
+### 9.2.2 准备功能
+
+### 9.2.3 恢复功能
 
