@@ -159,13 +159,13 @@ mysql-community-embedded-compat-8.0.34-1.el7.x86_64.rpm  mysql-community-test-8.
 执行安装命令：
 
 ```sql
-sudo yum install mysql-community-{server,client,client-plugins,icu-data-files,common,libs}-*
+sudo yum -y install mysql-community-{server,client,client-plugins,icu-data-files,common,libs}-*
 ```
 
 如果只安装客户端程序，可以不安装的mysql-community-server ：
 
 ```bash
-sudo yum install mysql-community-{client,client-plugins,common,libs}-*
+sudo yum -y install mysql-community-{client,client-plugins,common,libs}-*
 ```
 
 **七、初始化数据库**
@@ -196,7 +196,7 @@ innodb_log_file_size=100M
 **八、启动mysql服务**
 
 ```bash
-[mysql@mysql001 data]$ sudo systemctl status mysqld;
+[mysql@mysql001 data]$ sudo systemctl status mysqld
 ● mysqld.service - MySQL Server
    Loaded: loaded (/usr/lib/systemd/system/mysqld.service; enabled; vendor preset: disabled)
    Active: inactive (dead) since Sat 2023-12-16 02:18:31 CST; 6s ago
@@ -222,6 +222,14 @@ innodb_log_file_size=100M
 Dec 16 00:48:37 mysql001 systemd[1]: Starting MySQL Server...
 Dec 16 00:48:43 mysql001 systemd[1]: Started MySQL Server.
 ```
+
+禁止mysqld开机自启：
+
+```bash
+[mysql@mysql001 data]$ sudo systemctl disable mysqld
+```
+
+
 **九、查看临时密码**
 
 ```bash
@@ -256,7 +264,13 @@ Query OK, 0 rows affected (0.00 sec)
 
 ## 1.2 升级
 
-## 1.3 
+## 1.3 卸载
+
+```bash
+[mysql@mysql002 ~]$ rpm -qa |grep -i mysql
+[mysql@mysql002 ~]$ sudo yum remove mysql-community-* -y
+[mysql@mysql002 ~]$ sudo rm -rf /etc/my.cnf
+```
 
 # 2 账号和权限
 
@@ -1147,6 +1161,8 @@ Of course, regex functionality can be used to describe pretty much any list of t
 
 # 9 Percona XtraBackup
 
+## 9.1 Percona XtraBackup介绍
+
 Percona XtraBackup是一个开源的MySQL热备份实用工具，用于执行MySQL的InnoDB和XtraDB数据库的非阻塞备份。
 
 无论是24x7高负载服务器还是低事务量环境，Percona XtraBackup都能高效地进行热备份，而不会影响业务可用性和占用过多的数据库资源以及服务器性能。
@@ -1161,17 +1177,17 @@ Percona XtraBackup有以下优势：
 - 恢复时间快
 - 支持流、压缩和增量MySQL备份。
 
-官方参考文档：https://docs.percona.com/percona-xtrabackup/8.0/about-xtrabackup.html
+官方参考文档：[https://docs.percona.com/percona-xtrabackup/8.0/about-xtrabackup.html](https://docs.percona.com/percona-xtrabackup/8.0/about-xtrabackup.html)
 
-## 9.1 安装Percona XtraBackup
+## 9.2 安装Percona XtraBackup
 
 **注意**：下载前先确认自己的服务器和数据库的版本信息，根据实际情况下载相应的版本。
 
-手动下载地址：https://www.percona.com/downloads
+手动下载地址：[https://www.percona.com/downloads](https://www.percona.com/downloads)
 
-![Alt text](image-3.png)
+![image.png](https://oss-emcsprod-public.modb.pro/image/editor/20240104-d7a8dafe-3c39-4f64-bf37-4e3f16d7e6a2.png)
 
-### 9.1.1 rpm包安装方式
+### 9.2.1 rpm包安装方式
 
 **一、使用YUM下载方式，下载RPM包**：
 
@@ -1214,7 +1230,11 @@ xtrabackup version 8.0.22-15 based on MySQL server 8.0.22 Linux (x86_64) (revisi
 [mysql@mysql001 ~]$ yum remove percona-xtrabackup-80.x86_64
 ```
 
-### 9.1.2 tar包安装
+### 9.2.2 tar包安装
+
+tar包下载要选择的服务器版本是LINUX-GENERIC:
+
+![image.png](https://oss-emcsprod-public.modb.pro/image/editor/20240105-b24cd07b-5bde-4524-b1c7-112adc89e895.png)
 
 ```bash
 #解压：
@@ -1247,9 +1267,158 @@ export PATH=$PATH:$HOME/bin:$XTRABACKUP_HOME/bin
 xtrabackup version 8.0.34-29 based on MySQL server 8.0.34 Linux (x86_64) (revision id: 5ba706ee)
 ```
 
-## 9.2 使用Percona XtraBackup
+## 9.3 使用Percona XtraBackup
 
-### 9.2.0 报错处理
+XtraBackup的备份恢复过程可以分为备份、准备（prepare）和恢复（restore）三个阶段。
+
+在备份阶段，XtraBackup会复制InnoDB的数据文件，同时记录redo日志的变化。这个过程分为两个阶段，首先是备份redo日志文件，然后是复制InnoDB的数据文件。在备份数据文件时，XtraBackup会检测每个表空间中每个页的LSN（Log Sequence Number），如果LSN大于上次备份时的LSN，则备份该页。同时，XtraBackup还会记录当前检查点的LSN，以确保只备份自上次备份以来发生更改的数据页。
+
+在准备阶段，XtraBackup的主要工作是通过回滚未提交的事务及同步已经提交的事务至数据文件来使数据文件达到一致性状态。这个过程类似于InnoDB的实例恢复。
+
+在恢复阶段，XtraBackup会启动一个内嵌的InnoDB实例，然后回放xtrabackup日志（xtrabackup_log），将提交的事务信息变更应用到InnoDB数据/表空间，同时回滚未提交的事务。
+
+### 9.3.1 备份
+
+**全量备份**
+
+```bash
+[mysql@mysql001 full]$ xtrabackup --user=root --password=Mysql123. --backup --parallel=8 --target-dir=/disk1/bak/full
+
+[mysql@mysql001 full]$ ls /disk1/bak/full/
+backup-my.cnf  binlog.index    ibdata1  mysql.ibd           sakila  undo_001  xtrabackup_binlog_info  xtrabackup_info     xtrabackup_tablespaces
+binlog.000045  ib_buffer_pool  mysql    performance_schema  sys     undo_002  xtrabackup_checkpoints  xtrabackup_logfile
+```
+
+
+**增量备份**
+
+一、在上面"--target-dir=/disk1/bak/full"全量备份的基础上进行增量备份：
+
+```bash
+[mysql@mysql001 bak]$ xtrabackup --user=root --password=Mysql123. --backup --parallel=8 --target-dir=/disk1/bak/inc --incremental-basedir=/disk1/bak/full
+
+[mysql@mysql001 inc]$ ls /disk1/bak/inc/
+backup-my.cnf  ib_buffer_pool  mysql            performance_schema  undo_001.delta  undo_002.meta           xtrabackup_info
+binlog.000046  ibdata1.delta   mysql.ibd.delta  sakila              undo_001.meta   xtrabackup_binlog_info  xtrabackup_logfile
+binlog.index   ibdata1.meta    mysql.ibd.meta   sys                 undo_002.delta  xtrabackup_checkpoints  xtrabackup_tablespaces
+```
+
+以delta结尾的文件，是记录原文件变化的数据。
+
+二、在上面"--target-dir=/disk1/bak/inc --incremental-basedir=/disk1/bak/full"增量备份的基础上再进行增量备份：
+
+```bash
+[mysql@mysql001 inc1]$ xtrabackup --user=root --password=Mysql123. --backup --parallel=8 --target-dir=/disk1/bak/inc1 --incremental-basedir=/disk1/bak/inc
+
+[mysql@mysql001 inc1]$ ls /disk1/bak/inc1
+backup-my.cnf  ib_buffer_pool  mysql            performance_schema  test            undo_002.delta          xtrabackup_checkpoints  xtrabackup_tablespaces
+binlog.000047  ibdata1.delta   mysql.ibd.delta  sakila              undo_001.delta  undo_002.meta           xtrabackup_info
+binlog.index   ibdata1.meta    mysql.ibd.meta   sys                 undo_001.meta   xtrabackup_binlog_info  xtrabackup_logfile
+```
+
+**压缩备份**
+
+```bash
+[mysql@mysql001 bak]$ xtrabackup --user=root --password=Mysql123. --backup --compress --compress-threads=4 --target-dir=/disk1/bak/compressed
+```
+
+**部分备份**
+
+可以单独备份表或数据库。
+
+如果只备份sakila数据库中的表，使用如下命令:
+
+```bash
+#备份sakila所有的表
+[mysql@mysql001 bak]$ xtrabackup --user=root --password=Mysql123. --backup --datadir=/disk1/data/ --target-dir=/disk1/bak/part/tab --tables="^sakila[.].*"
+
+#只备份sakila的actor表
+[mysql@mysql001 bak]$ xtrabackup --user=root --password=Mysql123. --backup --datadir=/disk1/data/ --target-dir=/disk1/bak/part/tab --tables="^sakila[.]actor"
+```
+
+只备份某些个数据库：
+
+```bash
+#备份sakila performance_schema information_schema sys mysql
+[mysql@mysql001 bak]$ xtrabackup --user=root --password=Mysql123. --backup --target-dir=/disk1/bak/part/db --databases='sakila performance_schema information_schema sys mysql'
+```
+
+### 9.3.2 准备
+
+**准备全量备份**
+
+在全量备份的准备中，为了使数据库保持一致性，将进行以下操作：
+- 根据数据文件从日志文件重放已提交的事务；
+- 回滚未提交的事务。
+
+```bash
+[mysql@mysql001 bak]$ xtrabackup --user=root --password=Mysql123. --prepare --target-dir=/disk1/bak/full
+```
+
+**准备增量备份**
+
+准备增量备份和准备全量备份不一样，不会执行如全量备份操作时回滚未提交的事务，因为在增量备份时未提交的事务可能正在进行中，它们很可能会在下一个增量备份中提交了。
+
+所以在准备增量备份时，必须跳过未提交事务的回滚，使用 --apply-log-only 选项来阻止回滚操作。
+
+应用全量备份的第一个增量备份准备：
+
+```bash
+[mysql@mysql001 bak]$ xtrabackup --user=root --password=Mysql123. --prepare --apply-log-only --target-dir=/disk1/bak/full
+
+[mysql@mysql001 bak]$ xtrabackup --user=root --password=Mysql123. --prepare --apply-log-only --target-dir=/disk1/bak/full --incremental-dir=/disk1/bak/inc
+```
+
+原理是，将增量文件应用于/disk1/bak/full中的文件，令它们向前滚到增量备份的时间，对结果应用重做日志。最终数据在/data/backups/base目录下，而不是增量目录下。
+
+
+
+同理，应用全量备份的第二个增量备份准备：
+
+```bash
+[mysql@mysql001 bak]$ xtrabackup --user=root --password=Mysql123. --prepare --parallel=8 --apply-log-only --target-dir=/disk1/bak/full --incremental-dir=/disk1/bak/inc1
+```
+
+第三个。。。
+
+在做最后一个增量备份准备时，不需要再使用 --apply-log-only，因为此时需要将未提交的事务回滚。
+
+**注意**：如果不使用 --apply-log-only 选项执行准备，那么增量备份将是无用的，不能使用此备份进行恢复。
+
+
+**准备压缩备份**
+
+```bash
+#decompress
+[mysql@mysql001 bak]$ xtrabackup --user=root --password=Mysql123. --decompress --target-dir=/disk1/bak/compressed
+
+#prepare
+[mysql@mysql001 bak]$ xtrabackup --user=root --password=Mysql123. --prepare --target-dir=/data/compressed/
+```
+
+**准备部分备份**
+
+```bash
+[mysql@mysql001 bak]$ xtrabackup --user=root --password=Mysql123. --prepare --export --target-dir=/disk1/bak/part/db
+```
+
+### 9.3.3 恢复
+
+要执行恢复备份，必须满足以下条件：
+
+1. 备份集要完成**准备**。
+2. 数据目录**datadir必须为空**。
+3. 不能恢复到正在运行的mysqld实例的数据目录(除非导入部分备份)，在执行恢复之前需要**关闭MySQL服务器**。
+
+完成以上步骤后，就可以对全量备份、增量备份和压缩备份进行恢复：
+
+```bash
+[mysql@mysql001 disk1]$ sudo systemctl stop mysqld
+[mysql@mysql001 disk1]$ systemctl status mysqld
+[mysql@mysql001 bak]$ xtrabackup --user=root --password=Mysql123. --copy-back --target-dir=/disk1/bak/full
+```
+
+### 9.3.4 报错处理
 
 报错信息如下：
 
@@ -1257,7 +1426,9 @@ xtrabackup version 8.0.34-29 based on MySQL server 8.0.34 Linux (x86_64) (revisi
 [ERROR] [MY-011825] [Xtrabackup] Failed to connect to MySQL server: Can't connect to local MySQL server through socket
 ```
 
-原因是由于当使用host参数为“localhost”连接Mysql服务时，会优先使用“sock文件”进行连接，而不是使用“IP:端口”进行连接，而mysql尝试使用“sock文件”进行连接时，却无法获取“sock文件”的位置。
+原因是在localhost连接Mysql服务时，会优先使用sock文件进行连接，而不是使用IP端口进行连接。
+
+所以当可执行文件xtrabackup尝试使用sock文件进行连接时，无法获取sock文件的位置。
 
 解决办法是给XtraBackup命令指定socket路径：
 
@@ -1271,28 +1442,59 @@ socket=/var/lib/mysql/mysql.sock
 添加的这个路径和[mysqld]中的保持一致。
 
 #重启
-[mysql@mysql001 ~]$ sudo systemctl restart mysqld、
+[mysql@mysql001 ~]$ sudo systemctl restart mysqld
 ```
 
-### 9.2.1 备份功能
+# 10 数据救援
 
-全量备份：
+# 11 MySQL Shell
+
+# 12 复制
+
+## 12.1 复制说明
+
+## 12.2 克隆插件
+
+**一、加载插件**
+
+```sql
+mysql> install plugin clone soname 'mysql_clone.so';
+mysql> select plugin_name,plugin_status from information_schema.plugins where plugin_name='clone';
++-------------+---------------+
+| plugin_name | plugin_status |
++-------------+---------------+
+| clone       | ACTIVE        |
++-------------+---------------+
+1 row in set (0.00 sec)
+```
+
+**二、本地克隆**
+
+创建克隆用户：
+
+```sql
+mysql> create user clone@localhost identified by 'Clone123.';
+mysql> grant backup_admin on *.* to clone@localhost;
+mysql> show grants for clone@localhost;
++--------------------------------------------------+
+| Grants for clone@localhost                       |
++--------------------------------------------------+
+| GRANT USAGE ON *.* TO `clone`@`localhost`        |
+| GRANT BACKUP_ADMIN ON *.* TO `clone`@`localhost` |
++--------------------------------------------------+
+2 rows in set (0.00 sec)
+```
+
+本地克隆：
+
+```sql
+mysql> clone local data directory = '/disk1/clone';
+```
+
+clone目录不用手动创建，会自动生成。
+
+新克隆的数据路径可以用于启动一个新的实例：
 
 ```bash
-[mysql@mysql001 full]$ xtrabackup --user=root --password=Mysql123. --backup --parallel=8 --target-dir=/disk1/bak/full/
-
-[mysql@mysql001 full]$ ls /disk1/bak/full/
-backup-my.cnf  binlog.index    ibdata1  mysql.ibd           sakila  undo_001  xtrabackup_binlog_info  xtrabackup_info     xtrabackup_tablespaces
-binlog.000045  ib_buffer_pool  mysql    performance_schema  sys     undo_002  xtrabackup_checkpoints  xtrabackup_logfile
-```
-
-增量备份：
-
-```bash
 
 ```
-
-### 9.2.2 准备功能
-
-### 9.2.3 恢复功能
-

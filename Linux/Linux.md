@@ -902,18 +902,20 @@ umount 设备文件名或挂载点 （功能描述：卸载设备）
 ![](image/5.9.4-3.png)
 
 ### 5.9.5 fdisk分区
-1）基本语法
+
+**1）基本语法**
 
 fdisk -l （功能描述：查看磁盘分区详情）  
 fdisk 硬盘设备名 （功能描述：对新增硬盘进行分区操作）
 
 **注意**：命令必须在 root 用户下才能使用
 
-2）选项说明
+**2）选项说明**
 
 -l ：显示所有硬盘的分区列表
 
-3）功能说明
+**3）功能说明**
+
 1. Linux 分区  
    Device：分区序列  
    Boot：引导  
@@ -929,6 +931,102 @@ fdisk 硬盘设备名 （功能描述：对新增硬盘进行分区操作）
    n：新增分区  
    w：写入分区信息并退出  
    q：不保存分区信息直接退出
+
+**4）实操实例**
+
+查看新添加的磁盘sdb：
+
+```bash
+[root@mysql002 ~]# lsblk
+NAME   MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
+sdb      8:16   0    4G  0 disk
+sr0     11:0    1  4.5G  0 rom
+sda      8:0    0   50G  0 disk
+├─sda2   8:2    0    8G  0 part [SWAP]
+├─sda3   8:3    0   41G  0 part /
+└─sda1   8:1    0    1G  0 part /boot
+```
+
+fdisk分区：
+
+```bash
+[root@mysql002 ~]# echo -e "n\np\n1\n\n\nw" | fdisk /dev/sdb
+#或
+[root@mysql002 ~]# fdisk /dev/sdb
+Welcome to fdisk (util-linux 2.23.2).
+
+Changes will remain in memory only, until you decide to write them.
+Be careful before using the write command.
+
+Device does not contain a recognized partition table
+Building a new DOS disklabel with disk identifier 0xe650741b.
+
+Command (m for help): n
+Partition type:
+   p   primary (0 primary, 0 extended, 4 free)
+   e   extended
+Select (default p): p
+Partition number (1-4, default 1): 1
+First sector (2048-8388607, default 2048): 2048
+Last sector, +sectors or +size{K,M,G} (2048-8388607, default 8388607): 8388607
+Partition 1 of type Linux and of size 4 GiB is set
+
+Command (m for help): w
+The partition table has been altered!
+
+Calling ioctl() to re-read partition table.
+Syncing disks.
+```
+
+分区格式化，生成uuid：
+
+```bash
+[root@mysql002 ~]# mkfs -t xfs /dev/sdb1
+meta-data=/dev/sdb1              isize=256    agcount=4, agsize=262080 blks
+         =                       sectsz=512   attr=2, projid32bit=1
+         =                       crc=0        finobt=0, sparse=0
+data     =                       bsize=4096   blocks=1048320, imaxpct=25
+         =                       sunit=0      swidth=0 blks
+naming   =version 2              bsize=4096   ascii-ci=0 ftype=1
+log      =internal log           bsize=4096   blocks=2560, version=2
+         =                       sectsz=512   sunit=0 blks, lazy-count=1
+realtime =none                   extsz=4096   blocks=0, rtextents=0
+[root@mysql002 ~]# lsblk -f
+NAME   FSTYPE  LABEL                UUID                                 MOUNTPOINT
+sdb
+└─sdb1 xfs                          adb63c43-1b0e-4e18-9a64-81a4ad6ef60a
+sr0    iso9660 OL-7.9 Server.x86_64 2021-05-28-10-00-48-00
+sda
+├─sda2 swap                         dd147856-3269-45f4-a2f0-25927aabfeef [SWAP]
+├─sda3 xfs                          3ff19e2a-b627-4c9e-be7d-ef5f0e144db7 /
+└─sda1 xfs                          9ca01966-c7e2-456d-9f39-00d450a9f8cd /boot
+```
+
+将磁盘挂载到/disk1目录下：
+
+```bash
+[root@mysql002 /]# mkdir /disk1
+[root@mysql002 /]# mount /dev/sdb1 /disk1/
+[root@mysql002 /]# lsblk
+NAME   MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
+sdb      8:16   0    4G  0 disk
+└─sdb1   8:17   0    4G  0 part /disk1
+sr0     11:0    1  4.5G  0 rom
+sda      8:0    0   50G  0 disk
+├─sda2   8:2    0    8G  0 part [SWAP]
+├─sda3   8:3    0   41G  0 part /
+└─sda1   8:1    0    1G  0 part /boot
+```
+
+设置永久挂载（重启不消失）:
+
+```bash
+[root@mysql002 /]# lsblk -f | grep sdb1
+└─sdb1 xfs                          adb63c43-1b0e-4e18-9a64-81a4ad6ef60a /disk1
+[root@mysql002 /]# vim /etc/fstab
+#添加：
+UUID=adb63c43-1b0e-4e18-9a64-81a4ad6ef60a /disk1                  xfs     defaults        0 0
+```
 
 ## 5.10 内存管理
 ### 5.10.1 free 查看内存信息
