@@ -1025,7 +1025,6 @@ address.txt     country.sql   film_actor.sql     film.sql           inventory.tx
 
 ```sql
 [mysql@mysql001 bak]$ mysql sakila < sakila_actor.bak20240101.sql
-
 ```
 
 **二、带分隔符文本备份**
@@ -1453,7 +1452,204 @@ socket=/var/lib/mysql/mysql.sock
 
 ## 12.1 复制说明
 
-## 12.2 克隆插件
+## 12.2 复制搭建
+
+```bash
+#1 配置文件
+#1.1 主库
+server_id=1
+log_bin=/disk1/data/binlog/binlog
+#1.2 从库
+server_id=2
+
+#2 主库创建复制用户
+mysql> create user 'repl'@'192.168.131.100' identified by 'Repl123.';
+mysql> grant replication slave on *.* to 'repl'@'192.168.131.100';
+
+#3 获取主库全量备份
+[mysql@mysql001 full]$ mysqldump -uroot -pMysql123. --all-databases --single-transaction --master-data=2 --events --triggers --routines > full_backup.sql
+#发送到从库，mysql8.0.26版本后建议将--master-data换为--source-data
+[mysql@mysql001 full]$ scp full_backup.sql 192.168.131.100:/disk1/bak/full
+
+#4 基于主库备份恢复从库
+[mysql@mysql002 full]$ mysql -uroot -pMysql123. < /disk1/bak/full/full_backup.sql
+
+#5 建立主从复制
+#5.1 查找binlog位置点信息
+[mysql@mysql002 full]$ grep -m1 "CHANGE MASTER TO" full_backup.sql
+-- CHANGE MASTER TO MASTER_LOG_FILE='binlog.000058', MASTER_LOG_POS=680;
+#5.2 执行CHANGE MASTER TO命令，get_master_public_key配置项只需要在MySQL8.0以后的版本添加
+mysql> change master to 
+              master_host='192.168.131.99',
+              master_user='repl',
+              master_password='Repl123.',
+              master_log_file='binlog.000058',
+              master_log_pos=680,
+              get_master_public_key=1;
+# 5.2 查看表
+# mysql.slave_master_info
+mysql> select * from mysql.slave_master_info\G
+*************************** 1. row ***************************
+                Number_of_lines: 33
+                Master_log_name: binlog.000058
+                 Master_log_pos: 680
+                           Host: 192.168.131.99
+                      User_name: repl
+                  User_password: Repl123.
+                           Port: 3306
+                  Connect_retry: 60
+                    Enabled_ssl: 0
+                         Ssl_ca:
+                     Ssl_capath:
+                       Ssl_cert:
+                     Ssl_cipher:
+                        Ssl_key:
+         Ssl_verify_server_cert: 0
+                      Heartbeat: 30
+                           Bind:
+             Ignored_server_ids: 0
+                           Uuid: bd4b724b-ab29-11ee-826f-000c294bd026
+                    Retry_count: 86400
+                        Ssl_crl:
+                    Ssl_crlpath:
+          Enabled_auto_position: 0
+                   Channel_name:
+                    Tls_version:
+                Public_key_path:
+                 Get_public_key: 1
+              Network_namespace:
+   Master_compression_algorithm: uncompressed
+  Master_zstd_compression_level: 3
+               Tls_ciphersuites: NULL
+Source_connection_auto_failover: 0
+                      Gtid_only: 0
+
+#mysql.slave_relay_log_info
+mysql> select * from mysql.slave_relay_log_info\G
+*************************** 1. row ***************************
+                             Number_of_lines: 14
+                              Relay_log_name: ./mysql002-relay-bin.000002
+                               Relay_log_pos: 201
+                             Master_log_name: binlog.000058
+                              Master_log_pos: 680
+                                   Sql_delay: 0
+                           Number_of_workers: 4
+                                          Id: 1
+                                Channel_name:
+                   Privilege_checks_username: NULL
+                   Privilege_checks_hostname: NULL
+                          Require_row_format: 0
+             Require_table_primary_key_check: STREAM
+ Assign_gtids_to_anonymous_transactions_type: OFF
+Assign_gtids_to_anonymous_transactions_value:
+
+# 6 开启主从复制，从库上执行
+mysql> start slave;
+
+# 7 查看复制状态
+#从库执行
+mysql> show slave status\G
+*************************** 1. row ***************************
+               Slave_IO_State:
+                  Master_Host: 192.168.131.99
+                  Master_User: repl
+                  Master_Port: 3306
+                Connect_Retry: 60
+              Master_Log_File: binlog.000058
+          Read_Master_Log_Pos: 600
+               Relay_Log_File: mysql002-relay-bin.000002
+                Relay_Log_Pos: 323
+        Relay_Master_Log_File: binlog.000058
+             Slave_IO_Running: No
+            Slave_SQL_Running: Yes
+              Replicate_Do_DB:
+          Replicate_Ignore_DB:
+           Replicate_Do_Table:
+       Replicate_Ignore_Table:
+      Replicate_Wild_Do_Table:
+  Replicate_Wild_Ignore_Table:
+                   Last_Errno: 0
+                   Last_Error:
+                 Skip_Counter: 0
+          Exec_Master_Log_Pos: 600
+              Relay_Log_Space: 536
+              Until_Condition: None
+               Until_Log_File:
+                Until_Log_Pos: 0
+           Master_SSL_Allowed: No
+           Master_SSL_CA_File:
+           Master_SSL_CA_Path:
+              Master_SSL_Cert:
+            Master_SSL_Cipher:
+               Master_SSL_Key:
+        Seconds_Behind_Master: NULL
+Master_SSL_Verify_Server_Cert: No
+                Last_IO_Errno: 13114
+                Last_IO_Error: Got fatal error 1236 from source when reading data from binary log: 'bogus data in log event;        the first event 'binlog.000058' at 600, the last event read from '/disk1/data/binlog/binlog.000058' at 126, the last byte rea       d from '/disk1/data/binlog/binlog.000058' at 619.'
+               Last_SQL_Errno: 0
+               Last_SQL_Error:
+  Replicate_Ignore_Server_Ids:
+             Master_Server_Id: 1
+                  Master_UUID: bd4b724b-ab29-11ee-826f-000c294bd026
+             Master_Info_File: mysql.slave_master_info
+                    SQL_Delay: 0
+          SQL_Remaining_Delay: NULL
+      Slave_SQL_Running_State: Replica has read all relay log; waiting for more updates
+           Master_Retry_Count: 86400
+                  Master_Bind:
+      Last_IO_Error_Timestamp: 240110 00:32:53
+     Last_SQL_Error_Timestamp:
+               Master_SSL_Crl:
+           Master_SSL_Crlpath:
+           Retrieved_Gtid_Set:
+            Executed_Gtid_Set:
+                Auto_Position: 0
+         Replicate_Rewrite_DB:
+                 Channel_Name:
+           Master_TLS_Version:
+       Master_public_key_path:
+        Get_master_public_key: 1
+            Network_Namespace:
+
+#从库执行
+mysql> show processlist\G
+*************************** 3. row ***************************
+     Id: 29
+   User: system user
+   Host: connecting host
+     db: NULL
+Command: Connect
+   Time: 663
+  State: Waiting for source to send event
+   Info: NULL
+*************************** 4. row ***************************
+     Id: 30
+   User: system user
+   Host:
+     db: NULL
+Command: Query
+   Time: 663
+  State: Replica has read all relay log; waiting for more updates
+   Info: NULL
+
+#主库执行
+mysql> show processlist\G
+*************************** 2. row ***************************
+     Id: 15
+   User: repl
+   Host: mysql002:19268
+     db: NULL
+Command: Binlog Dump
+   Time: 486
+  State: Source has sent all binlog to replica; waiting for more updates
+   Info: NULL
+
+```
+
+
+## 12.2.1 备份恢复方式
+
+### 12.2.2 克隆插件方式
 
 **一、加载插件**
 
