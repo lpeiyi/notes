@@ -1450,34 +1450,50 @@ socket=/var/lib/mysql/mysql.sock
 
 # 12 复制
 
-## 12.1 复制说明
+## 12.1 复制原理
 
 ## 12.2 复制搭建
 
-```bash
-#1 配置文件
-#1.1 主库
+**一、配置文件**
+
+```sql
+#主库
 server_id=1
 log_bin=/disk1/data/binlog/binlog
-#1.2 从库
-server_id=2
 
-#2 主库创建复制用户
+# 从库
+server_id=2
+```
+
+**二、主库创建复制用户**
+
+```sql
 mysql> create user 'repl'@'192.168.131.100' identified by 'Repl123.';
 mysql> grant replication slave on *.* to 'repl'@'192.168.131.100';
+```
 
-#3 获取主库全量备份
+**三、获取主库全量备份**
+
+```sql
 [mysql@mysql001 full]$ mysqldump -uroot -pMysql123. --all-databases --single-transaction --master-data=2 --events --triggers --routines > full_backup.sql
 #发送到从库，mysql8.0.26版本后建议将--master-data换为--source-data
 [mysql@mysql001 full]$ scp full_backup.sql 192.168.131.100:/disk1/bak/full
+```
 
-#4 基于主库备份恢复从库
+**四、基于主库备份恢复从库**
+
+```sql
 [mysql@mysql002 full]$ mysql -uroot -pMysql123. < /disk1/bak/full/full_backup.sql
+```
 
-#5 建立主从复制
-#5.1 查找binlog位置点信息
+**五、建立主从复制（从库执行）**
+
+查找binlog位置点信息：
+
+```sql
 [mysql@mysql002 full]$ grep -m1 "CHANGE MASTER TO" full_backup.sql
 -- CHANGE MASTER TO MASTER_LOG_FILE='binlog.000058', MASTER_LOG_POS=680;
+
 #5.2 执行CHANGE MASTER TO命令，get_master_public_key配置项只需要在MySQL8.0以后的版本添加
 mysql> change master to 
               master_host='192.168.131.99',
@@ -1486,8 +1502,11 @@ mysql> change master to
               master_log_file='binlog.000058',
               master_log_pos=680,
               get_master_public_key=1;
-# 5.2 查看表
-# mysql.slave_master_info
+```
+
+查看表mysql.slave_master_info：
+
+```sql
 mysql> select * from mysql.slave_master_info\G
 *************************** 1. row ***************************
                 Number_of_lines: 33
@@ -1523,8 +1542,11 @@ mysql> select * from mysql.slave_master_info\G
                Tls_ciphersuites: NULL
 Source_connection_auto_failover: 0
                       Gtid_only: 0
+```
 
-#mysql.slave_relay_log_info
+查看表mysql.slave_relay_log_info：
+
+```sql
 mysql> select * from mysql.slave_relay_log_info\G
 *************************** 1. row ***************************
                              Number_of_lines: 14
@@ -1542,25 +1564,34 @@ mysql> select * from mysql.slave_relay_log_info\G
              Require_table_primary_key_check: STREAM
  Assign_gtids_to_anonymous_transactions_type: OFF
 Assign_gtids_to_anonymous_transactions_value:
+```
 
-# 6 开启主从复制，从库上执行
+**六、开启主从复制，从库上执行**
+
+```sql
 mysql> start slave;
+```
 
-# 7 查看复制状态
-#从库执行
+关闭是 stop slave
+
+**七、查看复制状态**
+
+从库执行：
+
+```sql
 mysql> show slave status\G
 *************************** 1. row ***************************
-               Slave_IO_State:
+               Slave_IO_State: Waiting for source to send event
                   Master_Host: 192.168.131.99
                   Master_User: repl
                   Master_Port: 3306
                 Connect_Retry: 60
-              Master_Log_File: binlog.000058
-          Read_Master_Log_Pos: 600
+              Master_Log_File: binlog.000059
+          Read_Master_Log_Pos: 157
                Relay_Log_File: mysql002-relay-bin.000002
-                Relay_Log_Pos: 323
-        Relay_Master_Log_File: binlog.000058
-             Slave_IO_Running: No
+                Relay_Log_Pos: 367
+        Relay_Master_Log_File: binlog.000059
+             Slave_IO_Running: Yes
             Slave_SQL_Running: Yes
               Replicate_Do_DB:
           Replicate_Ignore_DB:
@@ -1571,8 +1602,8 @@ mysql> show slave status\G
                    Last_Errno: 0
                    Last_Error:
                  Skip_Counter: 0
-          Exec_Master_Log_Pos: 600
-              Relay_Log_Space: 536
+          Exec_Master_Log_Pos: 157
+              Relay_Log_Space: 580
               Until_Condition: None
                Until_Log_File:
                 Until_Log_Pos: 0
@@ -1582,10 +1613,10 @@ mysql> show slave status\G
               Master_SSL_Cert:
             Master_SSL_Cipher:
                Master_SSL_Key:
-        Seconds_Behind_Master: NULL
+        Seconds_Behind_Master: 0
 Master_SSL_Verify_Server_Cert: No
-                Last_IO_Errno: 13114
-                Last_IO_Error: Got fatal error 1236 from source when reading data from binary log: 'bogus data in log event;        the first event 'binlog.000058' at 600, the last event read from '/disk1/data/binlog/binlog.000058' at 126, the last byte rea       d from '/disk1/data/binlog/binlog.000058' at 619.'
+                Last_IO_Errno: 0
+                Last_IO_Error:
                Last_SQL_Errno: 0
                Last_SQL_Error:
   Replicate_Ignore_Server_Ids:
@@ -1597,21 +1628,24 @@ Master_SSL_Verify_Server_Cert: No
       Slave_SQL_Running_State: Replica has read all relay log; waiting for more updates
            Master_Retry_Count: 86400
                   Master_Bind:
-      Last_IO_Error_Timestamp: 240110 00:32:53
+      Last_IO_Error_Timestamp:
      Last_SQL_Error_Timestamp:
                Master_SSL_Crl:
            Master_SSL_Crlpath:
            Retrieved_Gtid_Set:
             Executed_Gtid_Set:
-                Auto_Position: 0
+                Auto_Position: 1
          Replicate_Rewrite_DB:
                  Channel_Name:
            Master_TLS_Version:
        Master_public_key_path:
         Get_master_public_key: 1
             Network_Namespace:
+```
 
-#从库执行
+主库执行：
+
+```sql
 mysql> show processlist\G
 *************************** 3. row ***************************
      Id: 29
@@ -1643,54 +1677,31 @@ Command: Binlog Dump
    Time: 486
   State: Source has sent all binlog to replica; waiting for more updates
    Info: NULL
-
 ```
 
+## 12.3 GTID复制
 
-## 12.2.1 备份恢复方式
+### 12.3.1 GTID搭建
 
-### 12.2.2 克隆插件方式
+**一、参数配置**
 
-**一、加载插件**
-
-```sql
-mysql> install plugin clone soname 'mysql_clone.so';
-mysql> select plugin_name,plugin_status from information_schema.plugins where plugin_name='clone';
-+-------------+---------------+
-| plugin_name | plugin_status |
-+-------------+---------------+
-| clone       | ACTIVE        |
-+-------------+---------------+
-1 row in set (0.00 sec)
-```
-
-**二、本地克隆**
-
-创建克隆用户：
-
-```sql
-mysql> create user clone@localhost identified by 'Clone123.';
-mysql> grant backup_admin on *.* to clone@localhost;
-mysql> show grants for clone@localhost;
-+--------------------------------------------------+
-| Grants for clone@localhost                       |
-+--------------------------------------------------+
-| GRANT USAGE ON *.* TO `clone`@`localhost`        |
-| GRANT BACKUP_ADMIN ON *.* TO `clone`@`localhost` |
-+--------------------------------------------------+
-2 rows in set (0.00 sec)
-```
-
-本地克隆：
-
-```sql
-mysql> clone local data directory = '/disk1/clone';
-```
-
-clone目录不用手动创建，会自动生成。
-
-新克隆的数据路径可以用于启动一个新的实例：
+在传统复制上，主从节点都需要加入以下参数
 
 ```bash
-
+gtid_mode
 ```
+
+**二、change master to命令**
+
+不用指定master_log_file和master_log_pos，只需要添加master_auto_position=1
+
+```sql
+change replication source to 
+	   master_host='192.168.131.99',
+	   master_user='repl',
+	   master_password='Repl123.',
+	   master_auto_position=1;
+```
+
+### 12.3.2 GTID原理
+
