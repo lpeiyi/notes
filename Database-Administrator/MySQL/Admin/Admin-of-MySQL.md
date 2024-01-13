@@ -969,6 +969,8 @@ select thread_id,event_name,source,sys.format_time(timer_wait),sys.format_time(l
  order by timer_wait desc limit 3\G
  ```
 
+# 7 mysql数据库
+
 # 8 逻辑备份
 
 ## 8.1 逻辑备份和物理备份的区别
@@ -989,6 +991,12 @@ select thread_id,event_name,source,sys.format_time(timer_wait),sys.format_time(l
 [mysql@mysql001 bak]$ mysqldump --all-databases --routines --events > all_databases.bak20240101.sql
 [mysql@mysql001 bak]$ mysqldump --all-databases --master-data --single-transation > all_databases2.bak20240101.sql
 [mysql@mysql001 bak]$ mysqldump --databases sakila --skip-add-drop-table --no-create-info --replace > to_test20240101.sql
+```
+
+我的常用格式：
+
+```bash
+[mysql@mysql001 bak]$ mysqldump -uroot -pMysql123. --all_databases --quick --events --flush-logs --delete-master-logs --single-transaction > full.sql
 ```
 
 **二、带分隔符文本备份**
@@ -1498,3 +1506,6 @@ clone目录不用手动创建，会自动生成。
 ```bash
 
 ```
+
+
+
