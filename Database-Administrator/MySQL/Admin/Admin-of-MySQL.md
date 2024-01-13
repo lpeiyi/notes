@@ -1458,9 +1458,7 @@ socket=/var/lib/mysql/mysql.sock
 
 # 12 复制
 
-## 12.1 复制原理
-
-## 12.2 复制搭建
+## 12.1 复制搭建
 
 **一、配置文件**
 
@@ -1687,9 +1685,9 @@ Command: Binlog Dump
    Info: NULL
 ```
 
-## 12.3 GTID复制
+## 12.2 GTID复制
 
-### 12.3.1 GTID搭建
+### 12.2.1 GTID搭建
 
 **一、参数配置**
 
@@ -1711,12 +1709,82 @@ change replication source to
 	   master_auto_position=1;
 ```
 
-### 12.3.2 GTID原理
+### 12.2.2 GTID原理
 
-<<<<<<< HEAD
-=======
+## 12.3 半同步复制
+
+### 12.3.1事务的两阶段提交协议
+
+### 12.3.2 半同步复制原理
+
+### 12.3.3 半同步复制的安装
+
+**一、安装插件**
+
+主库：
+
+```sql
+mysql> install plugin rpl_semi_sync_master soname 'semisync_master.so';
 ```
 
+从库：
 
+```sql
+mysql> install plugin rpl_semi_sync_slave soname 'semisync_slave.so';;
+```
 
->>>>>>> temp
+**二、启动**
+
+主库：
+
+```sql
+mysql> set global rpl_semi_sync_master_enabled=1;
+```
+
+从库：
+
+```sql
+mysql> set global rpl_semi_sync_slave_enabled=1;
+```
+
+或者：
+
+在配置文件添加，重启后自动开启：
+
+```bash
+plugin_load="rpl_semi_sync_master=semisync_master.so;rpl_semi_sync_slave=semisync_slave.so"
+rpl_semi_sync_master_enabled=1
+rpl_semi_sync_slave_enabled=1
+```
+
+**三、重启从库的I/O线程**
+
+从库执行：
+
+```sql
+mysql> stop slave io_thread;
+Query OK, 0 rows affected, 1 warning (0.00 sec)
+
+mysql> start slave io_thread;
+Query OK, 0 rows affected, 1 warning (0.01 sec)
+
+mysql> show status like 'Rpl_semi_sync_slave_status';
++----------------------------+-------+
+| Variable_name              | Value |
++----------------------------+-------+
+| Rpl_semi_sync_slave_status | ON    |
++----------------------------+-------+
+1 row in set (0.00 sec)
+```
+
+主库执行：
+
+```sql
+mysql> show status like 'Rpl_semi_sync_master_status';
++-----------------------------+-------+
+| Variable_name               | Value |
++-----------------------------+-------+
+| Rpl_semi_sync_master_status | ON    |
++-----------------------------+-------+
+1 row in set (0.00 sec)
+```
