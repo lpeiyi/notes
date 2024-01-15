@@ -1,3 +1,17 @@
+# 1 备份
+
+# 2 恢复
+
+**一、数据库备份恢复过程中的报错：ERROR 3546 (HY000) at line 24: @@GLOBAL.GTID_PURGED cannot be changed: the added gtid set must not overlap with @@GLOBAL.GTID_EXECUTED**
+
+```bash
+重新dump数据库，使用 --set-gtid-purged=off的参数禁止导出gtid信息，再load进目标数据库。
+
+mysqldump -uroot -p --set-gtid-purged=off slowtech t1 > slowtech.t1.sql
+```
+
+# 3 binlog
+
 mysql磁盘空间满，导致挂库
 
 可以先临时清理binlog释放空间，启动库，后续再挂新盘

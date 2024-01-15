@@ -1788,3 +1788,31 @@ mysql> show status like 'Rpl_semi_sync_master_status';
 +-----------------------------+-------+
 1 row in set (0.00 sec)
 ```
+
+## 12.4 并行复制
+
+从库：
+
+```bash
+slave_parallel_type=logical_clock
+slave_parallel_workers=16
+slave_preserve_commit_order=on
+```
+
+从库重启后生效，此时是lock_based方案的并行复制模式。
+
+如果想开启writeset模式，在mysql5.7.22和mysql8.0开始，可在主库配置以下参数：
+
+```bash
+binlog_transaction_dependency_tracking=writeset_session
+binlog_transaction_dependency_history_size=25000
+transaction_write_set_extraction=xxhash64
+binlog_format=row
+```
+
+问题：
+
+1. 在从库恢复的表，导入主库时，从库表已经存在，对从库有什么影响？对复制有什么影响？
+2. 恢复主库时，需要关闭复制吗？
+3. 如何导入主库？
+4. 将从库恢复到主库前，如何将从库更新到主库最新状态？
