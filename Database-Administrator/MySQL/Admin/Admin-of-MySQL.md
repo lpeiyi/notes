@@ -1694,7 +1694,11 @@ Command: Binlog Dump
 在传统复制上，主从节点都需要加入以下参数
 
 ```bash
-gtid_mode
+gtid_mode=on
+enforce_gtid_consistency=on
+#在MySQL5.6中，还需要添加
+log_bin=/disk1/data/binlog/binlog
+log_slave_updates=1
 ```
 
 **二、change master to命令**
@@ -1816,3 +1820,406 @@ binlog_format=row
 2. 恢复主库时，需要关闭复制吗？
 3. 如何导入主库？
 4. 将从库恢复到主库前，如何将从库更新到主库最新状态？
+
+
+# 13 复制管理
+
+## 13.1 常见操作
+
+### 13.1.1 查看主库状态
+
+```sql
+mysql> show master status\G
+```
+
+### 13.1.2查看从库状态
+
+```sql
+mysql> show slave status\G
+```
+
+### 13.1.3 搭建复制
+
+```sql
+CHANGE MASTER TO option [, option] ... [ channel_option ]
+
+option: {
+    MASTER_BIND = 'interface_name'
+  | MASTER_HOST = 'host_name'
+  | MASTER_USER = 'user_name'
+  | MASTER_PASSWORD = 'password'
+  | MASTER_PORT = port_num
+  | PRIVILEGE_CHECKS_USER = {'account' | NULL}
+  | REQUIRE_ROW_FORMAT = {0|1}
+  | REQUIRE_TABLE_PRIMARY_KEY_CHECK = {STREAM | ON | OFF}
+  | ASSIGN_GTIDS_TO_ANONYMOUS_TRANSACTIONS = {OFF | LOCAL | uuid}
+  | MASTER_LOG_FILE = 'source_log_name'
+  | MASTER_LOG_POS = source_log_pos
+  | MASTER_AUTO_POSITION = {0|1}
+  | RELAY_LOG_FILE = 'relay_log_name'
+  | RELAY_LOG_POS = relay_log_pos
+  | MASTER_HEARTBEAT_PERIOD = interval
+  | MASTER_CONNECT_RETRY = interval
+  | MASTER_RETRY_COUNT = count
+  | SOURCE_CONNECTION_AUTO_FAILOVER = {0|1}
+  | MASTER_DELAY = interval
+  | MASTER_COMPRESSION_ALGORITHMS = 'algorithm[,algorithm][,algorithm]'
+  | MASTER_ZSTD_COMPRESSION_LEVEL = level
+  | MASTER_SSL = {0|1}
+  | MASTER_SSL_CA = 'ca_file_name'
+  | MASTER_SSL_CAPATH = 'ca_directory_name'
+  | MASTER_SSL_CERT = 'cert_file_name'
+  | MASTER_SSL_CRL = 'crl_file_name'
+  | MASTER_SSL_CRLPATH = 'crl_directory_name'
+  | MASTER_SSL_KEY = 'key_file_name'
+  | MASTER_SSL_CIPHER = 'cipher_list'
+  | MASTER_SSL_VERIFY_SERVER_CERT = {0|1}
+  | MASTER_TLS_VERSION = 'protocol_list'
+  | MASTER_TLS_CIPHERSUITES = 'ciphersuite_list'
+  | MASTER_PUBLIC_KEY_PATH = 'key_file_name'
+  | GET_MASTER_PUBLIC_KEY = {0|1}
+  | NETWORK_NAMESPACE = 'namespace'
+  | IGNORE_SERVER_IDS = (server_id_list),
+  | GTID_ONLY = {0|1}
+}
+
+channel_option:
+    FOR CHANNEL channel
+
+server_id_list:
+    [server_id [, server_id] ... ]
+```
+
+### 13.1.4 开启复制
+
+```sql
+START REPLICA [thread_types] [until_option] [connection_options] [channel_option]
+
+thread_types:
+    [thread_type [, thread_type] ... ]
+
+thread_type:
+    IO_THREAD | SQL_THREAD
+
+until_option:
+    UNTIL {   {SQL_BEFORE_GTIDS | SQL_AFTER_GTIDS} = gtid_set
+          |   MASTER_LOG_FILE = 'log_name', MASTER_LOG_POS = log_pos
+          |   SOURCE_LOG_FILE = 'log_name', SOURCE_LOG_POS = log_pos
+          |   RELAY_LOG_FILE = 'log_name', RELAY_LOG_POS = log_pos
+          |   SQL_AFTER_MTS_GAPS  }
+
+connection_options:
+    [USER='user_name'] [PASSWORD='user_pass'] [DEFAULT_AUTH='plugin_name'] [PLUGIN_DIR='plugin_dir']
+
+
+channel_option:
+    FOR CHANNEL channel
+```
+
+### 13.1.5 停止复制
+
+```sql
+STOP {SLAVE | REPLICA} [thread_types] [channel_option]
+
+thread_types:
+    [thread_type [, thread_type] ... ]
+
+thread_type: IO_THREAD | SQL_THREAD
+
+channel_option:
+    FOR CHANNEL channel
+```
+
+### 13.1.6 在主库查看从库ip和端口
+
+```sql
+show processlist;
+show slave hosts;
+show replicas;
+```
+
+### 13.1.7 查看binlog
+
+```sql
+show master logs;
+```
+
+### 13.1.8 删除binlog
+
+```sql
+PURGE { BINARY | MASTER } LOGS {
+    TO 'log_name'
+  | BEFORE datetime_expr
+}
+```
+
+### 13.1.9 查看binlog内容
+
+```sql
+SHOW BINLOG EVENTS
+   [IN 'log_name']
+   [FROM pos]
+   [LIMIT [offset,] row_count]
+```
+
+### 13.1.10 reset master、reset slave和reset slave all
+
+```sql
+
+```
+
+### 13.1.11 跳过指定事务
+
+```sql
+#基于位置点复制
+stop slave;
+set global sql_slave_skip_counter=1;
+start slave;
+
+#基于GTID复制，本质是注入空事务
+stop slave;
+set session gtid_next='xxx';#根据show slave status的executed_gtid_set的最大值+1
+begin;
+commit;
+set session gtid_nex='automatic';
+start slave;
+```
+
+### 13.1.12 操作不写入binlog
+
+```sql
+set session sql_log_bin=0;
+```
+
+### 13.1.13 判断主库的某个操作是否已经在从库执行
+
+```sql
+#位置点复制
+select master_pos_wait('binlog.000060','720');
+
+#gtid复制
+select wait_for_executed_gtid_set('bd4b724b-ab29-11ee-826f-000c294bd026:15');
+```
+
+### 13.1.14 在线设置复制的规则
+
+```sql
+CHANGE REPLICATION FILTER filter[, filter]
+	[, ...] [FOR CHANNEL channel]
+
+filter: {
+    REPLICATE_DO_DB = (db_list)
+  | REPLICATE_IGNORE_DB = (db_list)
+  | REPLICATE_DO_TABLE = (tbl_list)
+  | REPLICATE_IGNORE_TABLE = (tbl_list)
+  | REPLICATE_WILD_DO_TABLE = (wild_tbl_list)
+  | REPLICATE_WILD_IGNORE_TABLE = (wild_tbl_list)
+  | REPLICATE_REWRITE_DB = (db_pair_list)
+}
+
+db_list:
+    db_name[, db_name][, ...]
+
+tbl_list:
+    db_name.table_name[, db_name.table_name][, ...]
+wild_tbl_list:
+    'db_pattern.table_pattern'[, 'db_pattern.table_pattern'][, ...]
+
+db_pair_list:
+    (db_pair)[, (db_pair)][, ...]
+
+db_pair:
+    from_db, to_db
+```
+
+修改完后要想重启生效，需要将对应的参数添加到配置文件中。
+
+## 13.2 复制的监控
+
+主要是根据performance_schema性能视图观察。
+
+### 13.2.1 连接信息
+
+**一、replication_connection_configuration**
+
+记录了复制的信息，包含了change master to的选项。
+
+```sql
+mysql> select * from replication_connection_configuration\G
+*************************** 1. row ***************************
+                   CHANNEL_NAME:
+                           HOST: 192.168.131.99
+                           PORT: 3306
+                           USER: repl
+              NETWORK_INTERFACE:
+                  AUTO_POSITION: 1
+                    SSL_ALLOWED: NO
+                    SSL_CA_FILE:
+                    SSL_CA_PATH:
+                SSL_CERTIFICATE:
+                     SSL_CIPHER:
+                        SSL_KEY:
+  SSL_VERIFY_SERVER_CERTIFICATE: NO
+                   SSL_CRL_FILE:
+                   SSL_CRL_PATH:
+      CONNECTION_RETRY_INTERVAL: 60
+         CONNECTION_RETRY_COUNT: 86400
+             HEARTBEAT_INTERVAL: 30.000
+                    TLS_VERSION:
+                PUBLIC_KEY_PATH:
+                 GET_PUBLIC_KEY: YES
+              NETWORK_NAMESPACE:
+          COMPRESSION_ALGORITHM: uncompressed
+         ZSTD_COMPRESSION_LEVEL: 3
+               TLS_CIPHERSUITES: NULL
+SOURCE_CONNECTION_AUTO_FAILOVER: 0
+                      GTID_ONLY: 0
+```
+
+**二、replication_connection_status**
+
+记录了I/O线程的状态信息。
+
+```sql
+mysql> select * from replication_connection_status\G
+*************************** 1. row ***************************
+                                      CHANNEL_NAME:
+                                        GROUP_NAME:
+                                       SOURCE_UUID: bd4b724b-ab29-11ee-826f-000c294bd026
+                                         THREAD_ID: 148
+                                     SERVICE_STATE: ON
+                         COUNT_RECEIVED_HEARTBEATS: 1198
+                          LAST_HEARTBEAT_TIMESTAMP: 2024-01-19 00:38:48.460091
+                          RECEIVED_TRANSACTION_SET: bd4b724b-ab29-11ee-826f-000c294bd026:14-16
+                                 LAST_ERROR_NUMBER: 0
+                                LAST_ERROR_MESSAGE:
+                              LAST_ERROR_TIMESTAMP: 0000-00-00 00:00:00.000000
+                           LAST_QUEUED_TRANSACTION: bd4b724b-ab29-11ee-826f-000c294bd026:16
+ LAST_QUEUED_TRANSACTION_ORIGINAL_COMMIT_TIMESTAMP: 2024-01-19 00:15:18.242682
+LAST_QUEUED_TRANSACTION_IMMEDIATE_COMMIT_TIMESTAMP: 2024-01-19 00:15:18.242682
+     LAST_QUEUED_TRANSACTION_START_QUEUE_TIMESTAMP: 2024-01-19 00:15:18.317217
+       LAST_QUEUED_TRANSACTION_END_QUEUE_TIMESTAMP: 2024-01-19 00:15:18.317241
+                              QUEUEING_TRANSACTION:
+    QUEUEING_TRANSACTION_ORIGINAL_COMMIT_TIMESTAMP: 0000-00-00 00:00:00.000000
+   QUEUEING_TRANSACTION_IMMEDIATE_COMMIT_TIMESTAMP: 0000-00-00 00:00:00.000000
+        QUEUEING_TRANSACTION_START_QUEUE_TIMESTAMP: 0000-00-00 00:00:00.000000
+```
+### 13.2.2 事务重放
+
+**一、replication_applier_configuration**
+
+复制中会影响从库重放事务的配置信息。基本是change master to的选项。
+
+```sql
+mysql> select * from replication_applier_configuration\G
+*************************** 1. row ***************************
+                                CHANNEL_NAME:
+                               DESIRED_DELAY: 0
+                       PRIVILEGE_CHECKS_USER: NULL
+                          REQUIRE_ROW_FORMAT: NO
+             REQUIRE_TABLE_PRIMARY_KEY_CHECK: STREAM
+ ASSIGN_GTIDS_TO_ANONYMOUS_TRANSACTIONS_TYPE: OFF
+ASSIGN_GTIDS_TO_ANONYMOUS_TRANSACTIONS_VALUE: NULL
+```
+
+**二、replication_applier_status**
+
+从库应用线程的总体状态信息，不针对具体线程。
+
+```sql
+mysql> select * from replication_applier_status;
++--------------+---------------+-----------------+----------------------------+
+| CHANNEL_NAME | SERVICE_STATE | REMAINING_DELAY | COUNT_TRANSACTIONS_RETRIES |
++--------------+---------------+-----------------+----------------------------+
+|              | ON            |            NULL |                          0 |
++--------------+---------------+-----------------+----------------------------+
+```
+
+### 13.2.3 多线程复制
+
+**一、replication_applier_status_by_coordinator**
+
+coordinator线程的状态信息，只有开启多线程复制才会有信息。
+
+```sql
+mysql> select * from replication_applier_status_by_coordinator\G
+*************************** 1. row ***************************
+                                         CHANNEL_NAME:
+                                            THREAD_ID: 149
+                                        SERVICE_STATE: ON
+                                    LAST_ERROR_NUMBER: 0
+                                   LAST_ERROR_MESSAGE:
+                                 LAST_ERROR_TIMESTAMP: 0000-00-00 00:00:00.000000
+                           LAST_PROCESSED_TRANSACTION: bd4b724b-ab29-11ee-826f-000c294bd026:16
+ LAST_PROCESSED_TRANSACTION_ORIGINAL_COMMIT_TIMESTAMP: 2024-01-19 00:15:18.242682
+LAST_PROCESSED_TRANSACTION_IMMEDIATE_COMMIT_TIMESTAMP: 2024-01-19 00:15:18.242682
+    LAST_PROCESSED_TRANSACTION_START_BUFFER_TIMESTAMP: 2024-01-19 00:15:18.317327
+      LAST_PROCESSED_TRANSACTION_END_BUFFER_TIMESTAMP: 2024-01-19 00:15:18.317355
+                               PROCESSING_TRANSACTION:
+     PROCESSING_TRANSACTION_ORIGINAL_COMMIT_TIMESTAMP: 0000-00-00 00:00:00.000000
+    PROCESSING_TRANSACTION_IMMEDIATE_COMMIT_TIMESTAMP: 0000-00-00 00:00:00.000000
+        PROCESSING_TRANSACTION_START_BUFFER_TIMESTAMP: 0000-00-00 00:00:00.000000
+```
+
+**二、replication_applier_status_by_worker**
+
+worker线程的状态信息。
+
+```sql
+mysql> select * from replication_applier_status_by_worker limit 1\G
+*************************** 1. row ***************************
+                                           CHANNEL_NAME:
+                                              WORKER_ID: 1
+                                              THREAD_ID: 150
+                                          SERVICE_STATE: ON
+                                      LAST_ERROR_NUMBER: 0
+                                     LAST_ERROR_MESSAGE:
+                                   LAST_ERROR_TIMESTAMP: 0000-00-00 00:00:00.000000
+                               LAST_APPLIED_TRANSACTION: bd4b724b-ab29-11ee-826f-000c294bd026:16
+     LAST_APPLIED_TRANSACTION_ORIGINAL_COMMIT_TIMESTAMP: 2024-01-19 00:15:18.242682
+    LAST_APPLIED_TRANSACTION_IMMEDIATE_COMMIT_TIMESTAMP: 2024-01-19 00:15:18.242682
+         LAST_APPLIED_TRANSACTION_START_APPLY_TIMESTAMP: 2024-01-19 00:15:18.317369
+           LAST_APPLIED_TRANSACTION_END_APPLY_TIMESTAMP: 2024-01-19 00:15:18.325375
+                                   APPLYING_TRANSACTION:
+         APPLYING_TRANSACTION_ORIGINAL_COMMIT_TIMESTAMP: 0000-00-00 00:00:00.000000
+        APPLYING_TRANSACTION_IMMEDIATE_COMMIT_TIMESTAMP: 0000-00-00 00:00:00.000000
+             APPLYING_TRANSACTION_START_APPLY_TIMESTAMP: 0000-00-00 00:00:00.000000
+                 LAST_APPLIED_TRANSACTION_RETRIES_COUNT: 0
+   LAST_APPLIED_TRANSACTION_LAST_TRANSIENT_ERROR_NUMBER: 0
+  LAST_APPLIED_TRANSACTION_LAST_TRANSIENT_ERROR_MESSAGE:
+LAST_APPLIED_TRANSACTION_LAST_TRANSIENT_ERROR_TIMESTAMP: 0000-00-00 00:00:00.000000
+                     APPLYING_TRANSACTION_RETRIES_COUNT: 0
+       APPLYING_TRANSACTION_LAST_TRANSIENT_ERROR_NUMBER: 0
+      APPLYING_TRANSACTION_LAST_TRANSIENT_ERROR_MESSAGE:
+    APPLYING_TRANSACTION_LAST_TRANSIENT_ERROR_TIMESTAMP: 0000-00-00 00:00:00.000000
+1 row in set (0.00 sec)
+```
+
+### 13.2.4 过滤规则
+
+**一、replication_applier_filters**
+
+记录了复制中channel级别的过滤规则。
+
+```sql
+mysql> select * from replication_applier_filters;
+```
+
+**二、replication_applier_global_filters**
+
+全局级别的过滤规则，对所有channel都生效。
+
+```sql
+mysql> select * from replication_applier_global_filters;
+```
+
+### 13.2.5 组复制
+
+```sql
+mysql> select * from replication_group_members\G
+```
+
+```sql
+mysql> select * from replication_group_member_stats\G
+```
+## 13.3 主从延迟
