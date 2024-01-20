@@ -2038,6 +2038,30 @@ db_pair:
 
 主要是根据performance_schema性能视图观察。
 
+```sql
+mysql> 
+select TABLE_SCHEMA,TABLE_NAME,TABLE_ROWS
+from information_schema.TABLES
+where TABLE_SCHEMA='performance_schema' and table_name like 'replication_%';
+
++--------------------+------------------------------------------------------+------------+
+| TABLE_SCHEMA       | TABLE_NAME                                           | TABLE_ROWS |
++--------------------+------------------------------------------------------+------------+
+| performance_schema | replication_applier_configuration                    |        256 |
+| performance_schema | replication_applier_filters                          |          0 |
+| performance_schema | replication_applier_global_filters                   |          0 |
+| performance_schema | replication_applier_status                           |        256 |
+| performance_schema | replication_applier_status_by_coordinator            |        256 |
+| performance_schema | replication_applier_status_by_worker                 |       8192 |
+| performance_schema | replication_asynchronous_connection_failover         |          0 |
+| performance_schema | replication_asynchronous_connection_failover_managed |          0 |
+| performance_schema | replication_connection_configuration                 |        256 |
+| performance_schema | replication_connection_status                        |        256 |
+| performance_schema | replication_group_member_stats                       |          0 |
+| performance_schema | replication_group_members                            |          0 |
++--------------------+------------------------------------------------------+------------+
+```
+
 ### 13.2.1 连接信息
 
 **一、replication_connection_configuration**
@@ -2223,3 +2247,179 @@ mysql> select * from replication_group_members\G
 mysql> select * from replication_group_member_stats\G
 ```
 ## 13.3 主从延迟
+
+### 13.3.1 主从延迟分析
+
+**一、从库服务器的负载情况**
+
+对于主从延迟，一般关注CPU和I/O；
+
+**1）CPU**
+
+分析CPU是否达到瓶颈，常用的命令是top。
+
+```bash
+%Cpu(s):  0.0 us,  0.2 sy,  0.0 ni, 99.7 id,  0.0 wa,  0.2 hi,  0.0 si,  0.0 st
+```
+
+一般来说，当CPU的空闲时间占比小于10%时，需要重点关注。一般来说，对于数据库，CPU很少时瓶颈，除非有大量的慢SQL。
+
+**2）I/O**
+
+查看磁盘I/O的负载情况，常用的命令是iostas。
+
+```bash
+[mysql@mysql002 ~]$ iostat -xm
+Linux 5.4.17-2102.201.3.el7uek.x86_64 (mysql002)        01/20/2024      _x86_64_        (2 CPU)
+
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+           0.02    0.00    0.55    0.00    0.00   99.43
+
+Device:         rrqm/s   wrqm/s     r/s     w/s    rMB/s    wMB/s avgrq-sz avgqu-sz   await r_await w_await  svctm  %util
+sdb               0.00     0.00    0.01    0.03     0.00     0.00    66.02     0.00    0.36    0.44    0.35   0.45   0.00
+sda               0.00     0.02    0.04    0.11     0.00     0.00    26.94     0.00    0.59    0.36    0.68   0.78   0.01
+scd0              0.00     0.00    0.00    0.00     0.00     0.00   114.22     0.00    1.17    1.17    0.00   1.33   0.00
+```
+
+**二、主从复制状态**
+
+**1）主库**
+主库使用show master status查看复制状态。
+
+```sql
+mysql> show master status\G
+             File: binlog.000060
+         Position: 1000
+```
+
+需要关注的指标是File、Position。
+
+(File,Position)记录了主库 binlog 的位置。
+
+**2）从库**
+
+从库用show slave status命令查看复制状态。
+
+```sql
+mysql> show slave status\G
+              Master_Log_File: binlog.000060
+          Read_Master_Log_Pos: 1000
+        Relay_Master_Log_File: binlog.000060
+          Exec_Master_Log_Pos: 1000
+```
+
+需要关注的指标是Master_Log_File、Read_Master_Log_Pos、Relay_Master_Log_File和Exec_Master_Log_Pos。
+
+(Master_Log_File,Read_Master_Log_Pos)记录了IO线程当前正在接收的二进制日志事件在主库 binlog 中的位置。
+
+(Relay_Master_Log_File,Exec_Master_Log_Pos)记录了SQL线程当前正在重放的二进制日志事件在主库 binlog 的位置。
+
+**3）出现主从延迟的情况**
+
+- 如果 (File,Position)大于(Master_Log_File,Read_Master_Log_Pos) 则意味着**IO线程**存在延迟。
+- 如果(Relay_Master_Log_File,Exec_Master_Log_Pos)小于(Master_Log_File, Read_Master_Log_Pos ) ，则意味着**SQL线程**存在延迟。
+
+**三、主库binlog的写入量**
+
+关注主库的binlog的生成速度。
+
+### 13.3.2 主从延迟的常见原因及解决办法
+
+**一、I/O线程存在延迟**
+
+一般情况下I/O很少存在延迟。
+
+**1）网络延迟**
+
+可开启slave_compressed_protocol参数，启用binlog压缩传输。
+
+**2）磁盘I/O存在瓶颈**
+
+可调整从库的双一设置或关闭binlog。
+
+**3）网卡存在问题**
+
+**二、SQL线程存在延迟**
+
+**1）主库写入量过大，SQL线程单线程重放**
+
+可升级到5.7以上，开启并行复制。
+
+**2）statement模式下的慢sql**
+
+表现为Relay_Master_Log_File和Exec_Master_Log_Pos在一段时间内没有变化。
+
+解决办法是优化sql。
+
+**3）row格式下，表上没索引**
+
+表现为Relay_Master_Log_File和Exec_Master_Log_Pos在一段时间内没有变化。
+
+解决办法是：
+
+- 从库临时创建一个索引，加快从放速度。
+- 将参数slave_rows_search_algorithms设置为INDEX_SCAN,HASH_SCAN。
+
+**4）大事务**
+
+row格式下，操作涉及的记录数比较多。
+
+解决办法是，索引已经创建的情况下，将大事务拆分为小事务，每次小批量执行。
+
+**5）从库上有查询操作**
+
+**6）从库上有备份**
+
+**7）磁盘I/O存在瓶颈**
+
+### 13.3.3 解读Seconds_Behind_Master
+
+**一、Seconds_Behind_Master的局限性**
+
+**二、监控主从延迟**
+
+**1）MySql8.0之前，使用pt-heartbeat**
+
+安装：
+
+```bash
+wget percona.com/get/pt-heartbeat
+chmod +x pt-heartbeat
+
+#添加环境变量
+sudo vim /etc/profile
+source /etc/profile
+```
+
+**1）主库**
+
+```bash
+[mysql@mysql002 ~]$ pt-heartbeat -u root -p Mysql123. -h mysql001 -D percona --update --daemonize
+```
+第一次执行加上--create-table。
+
+**2）从库**
+
+```bash
+[mysql@mysql002 ~]$ pt-heartbeat -u root -p Mysql123. -h mysql002 -D percona --monitor
+```
+
+**2）MySql8.0原生的解决方案**
+
+```sql
+select case
+        when min_commit_timestamp is null then 0
+        else unix_timestamp(now(6)) - unix_timestamp(min_commit_timestamp)
+    end as seconds_behind_master
+from (
+     select min(APPLYING_TRANSACTION_ORIGINAL_COMMIT_TIMESTAMP) as min_commit_timestamp
+       from performance_schema.replication_applier_status_by_worker
+      where applying_transaction <> ''
+	 ) t;
+
++-----------------------+
+| seconds_behind_master |
++-----------------------+
+|                     0 |
++-----------------------+
+```
