@@ -260,7 +260,167 @@ Query OK, 0 rows affected (0.00 sec)
 [mysql@lu9up ~]$ mysql -uroot -pMysql123.
 ```
 
-### 1.1.2 二进制文件安装
+### 1.1.2 二进制包安装
+
+**一、下载二进制包**
+
+https://downloads.mysql.com/archives/community/
+
+![Alt text](image-3.png)
+
+**二、删除自带的配置文件**
+
+centos和redhat上一般已经安装有mariadb-libs包和/my.cnf配置文件，安装MySQL数据库前一定要删除，以免和新安装的MySQL造成冲突。
+
+检查默认配置文件是否存在：
+
+```bash
+[root@mysql ~]# ll /etc/my.cnf
+-rw-r--r--. 1 root root 570 Oct  1  2020 /etc/my.cnf
+```
+
+再检查是否有MySQL或者MariaDB的安装包：
+
+```bash
+[root@mysql ~]# rpm -qa | grep -i mysql
+[root@mysql ~]# rpm -qa | grep -i mariadb
+mariadb-libs-5.5.68-1.el7.x86_64
+```
+
+删除这些文件：
+
+```bash
+[root@mysql001 ~]# rpm -e mariadb-libs
+[root@mysql001 ~]# ll /etc/my.cnf
+ls: cannot access /etc/my.cnf: No such file or directory
+```
+
+删除mariadb-libs后，/etc/my.cnf也会被一并删除。
+
+注意：如果报依赖错误，使用下面的命令删除：
+
+```bash
+[root@mysql ~]# rpm -e mariadb-libs
+error: Failed dependencies:
+        libmysqlclient.so.18()(64bit) is needed by (installed) postfix-2:2.10.1-9.el7.x86_64
+        libmysqlclient.so.18(libmysqlclient_18)(64bit) is needed by (installed) postfix-2:2.10.1-9.el7.x86_64
+[root@mysql ~]# rpm -e --nodeps mariadb-libs-5.5.68-1.el7.x86_64
+[root@mysql ~]# rpm -qa | grep -i mariadb
+```
+
+卸载mariadb-libs后，my.cnf也会被一并删除。
+
+**三、创建用户和组**
+
+```bash
+[root@mysql ~]# groupadd mysql
+[root@mysql ~]# useradd -g mysql mysql
+[root@mysql ~]# passwd mysql
+```
+
+**四、解压二进制包**
+
+```bash
+[root@mysql ~]# cd /usr/local
+[root@mysql local]# tar xvf /tmp/mysql-8.0.25-linux-glibc2.12-x86_64.tar.xz
+[root@mysql local]# ln -s mysql-8.0.25-linux-glibc2.12-x86_64 mysql
+```
+
+**五、编辑配置文件**
+
+```bash
+[root@mysql local]# vim /etc/my.cnf
+```
+
+添加以下基础的配置文件：
+
+```bash
+[mysqld]
+basedir=/usr/local/mysql
+datadir=/data/mysql/3306/data
+user=mysql
+port=3306
+socket=/data/mysql/3306/data/mysql.sock
+log_error=/data/mysql/3306/data/mysqld.err
+
+[client]
+socket=/data/mysql/3306/data/mysql.sock
+```
+
+**六、创建数据目录**
+
+```bash
+[root@mysql local]# mkdir -p /data/mysql/3306/data
+[root@mysql data]# chown -R mysql.mysql /data
+```
+
+**七、添加环境变量**
+
+```bash
+[root@mysql mysql]# vim /etc/profile
+```
+
+在最后追加：
+
+```bash
+export MYSQL_HOME=/usr/local/mysql
+export PATH=$PATH:$HOME/bin:$MYSQL_HOME/bin
+```
+
+生效：
+
+```bash
+[root@mysql mysql]# source /etc/profile
+```
+
+**八、初始化实例**
+
+切换到mysql用户：
+
+```bash
+[root@mysql mysql]# su - mysql
+```
+
+执行初始化：
+
+```bash
+[mysql@mysql ~]$ mysqld --defaults-ffile=/etc/my.cnf  --initialize
+```
+
+如果没有跳出报错信息，说明初始化成功。此时，在数据目录可以看到已经生成了相应的文件。
+
+**九、启动实例**
+
+```bash
+[mysql@mysql ~]$ mysql_ssl_rsa_setup
+[mysql@mysql bin]$ mysqld_safe --user=mysql &
+[1] 6989
+[mysql@mysql bin]$ 2024-01-21T17:50:13.640819Z mysqld_safe Logging to '/data/mysql/3306/data/mysqld.err'.
+2024-01-21T17:50:13.719308Z mysqld_safe Starting mysqld daemon with databases from /data/mysql/3306/data
+
+[mysql@mysql bin]$
+[mysql@mysql bin]$ ps -ef | grep mysqld
+root      6831  5394  0 01:47 pts/1    00:00:00 tailf mysqld.err
+mysql     6989  5070  0 01:50 pts/0    00:00:00 /bin/sh /usr/local/mysql/bin/mysqld_safe --user=mysql
+mysql     7144  6989  1 01:50 pts/0    00:00:02 /usr/local/mysql/bin/mysqld --basedir=/usr/local/mysql --datadir=/data/mysql/3306/data --plugin-dir=/usr/local/mysql/lib/plugin --log-error=/data/mysql/3306/data/mysqld.err --pid-file=mysql.pid --socket=/data/mysql/3306/data/mysql.sock --port=3306
+mysql     7303  5070  0 01:52 pts/0    00:00:00 grep --color=auto mysqld
+```
+
+**十、登录**
+
+查看临时密码：
+
+```bash
+[mysql@mysql bin]$ grep "temporary password" /data/mysql/3306/data/mysqld.err
+2024-01-21T17:45:29.080672Z 6 [Note] [MY-010454] [Server] A temporary password is generated for root@localhost: H#Nva+9w(&tp
+```
+
+登录，并修改密码：
+
+```bash
+[mysql@mysql bin]$ mysql -uroot -p'H#Nva+9w(&tp'
+mysql> alter user user() identified by 'Mysql123.';
+```
 
 ## 1.2 升级
 
@@ -2423,3 +2583,9 @@ from (
 |                     0 |
 +-----------------------+
 ```
+
+# 14 组复制
+
+# 15 innodb cluster
+
+# 16 监控 
