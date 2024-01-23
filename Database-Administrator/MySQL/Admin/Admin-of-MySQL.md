@@ -262,11 +262,17 @@ Query OK, 0 rows affected (0.00 sec)
 
 ### 1.1.2 二进制包安装
 
+二进制包是经过源码编译后，解压即可用的安装包。相比于rpm包和源码包，官方更推荐在生产环境中使用二进制包安装，因为相对于rpm包安装路径可控，且比源码包安装过程简单，功能性、性能和安全都有优势。
+
 **一、下载二进制包**
 
-https://downloads.mysql.com/archives/community/
+下载路径：https://downloads.mysql.com/archives/community/
+
+安装指导：https://dev.mysql.com/doc/refman/8.0/en/binary-installation.html
 
 ![Alt text](image-3.png)
+
+下下来上传到/tmp中。
 
 **二、删除自带的配置文件**
 
@@ -297,7 +303,7 @@ ls: cannot access /etc/my.cnf: No such file or directory
 
 删除mariadb-libs后，/etc/my.cnf也会被一并删除。
 
-注意：如果报依赖错误，使用下面的命令删除：
+注意：如果报依赖错误，使用下面的命令删除： 
 
 ```bash
 [root@mysql ~]# rpm -e mariadb-libs
@@ -384,7 +390,7 @@ export PATH=$PATH:$HOME/bin:$MYSQL_HOME/bin
 执行初始化：
 
 ```bash
-[mysql@mysql ~]$ mysqld --defaults-ffile=/etc/my.cnf  --initialize
+[mysql@mysql ~]$ mysqld --defaults-file=/etc/my.cnf  --initialize
 ```
 
 如果没有跳出报错信息，说明初始化成功。此时，在数据目录可以看到已经生成了相应的文件。
@@ -422,9 +428,91 @@ mysql     7303  5070  0 01:52 pts/0    00:00:00 grep --color=auto mysqld
 mysql> alter user user() identified by 'Mysql123.';
 ```
 
-## 1.2 升级
+## 1.2 mysql服务管理
 
-## 1.3 卸载
+二进制包安装的时候需要配置。
+
+### 1.2.1 /etc/init.d/mysqld
+
+```bash
+[mysql@mysql ~]$ cp /usr/local/mysql/support-files/mysql.server /etc/init.d/mysqld
+```
+
+使用方法：
+
+```bash
+[mysql@mysql ~]$ service mysqld status
+[mysql@mysql ~]$ service mysqld start
+[mysql@mysql ~]$ service mysqld stop
+```
+
+### 1.2.2 systemd
+
+**1）创建systemd服务配置文件：**
+
+```bash
+[mysql@mysql ~]$ sudo vim /usr/lib/systemd/system/mysqld.service
+```
+
+添加：
+
+```bash
+[Unit]
+Description=MySQL Server
+Documentation=man:mysqld(8)
+Documentation=http://dev.mysql.com/doc/refman/en/using-systemd.html
+After=network-online.target
+After=syslog.target
+
+[Install]
+WantedBy=multi-user.target
+
+[Service]
+User=mysql
+Group=mysql
+
+Type=notify
+
+# Disable service start and stop timeout logic of systemd for mysqld service.
+TimeoutSec=0
+
+# Start main service
+ExecStart=/usr/local/mysql/bin/mysqld --defaults-file=/etc/my.cnf $MYSQLD_OPTS
+
+# Use this to switch malloc implementation
+EnvironmentFile=-/etc/sysconfig/mysql
+
+# Sets open_files_limit
+LimitNOFILE = 65536
+
+Restart=on-failure
+
+RestartPreventExitStatus=1
+
+# Set enviroment variable MYSQLD_PARENT_PID. This is required for restart.
+Environment=MYSQLD_PARENT_PID=1
+
+PrivateTmp=false
+```
+
+**2）配置生效**
+
+```bash
+[mysql@mysql ~]$ sudo systemctl daemon-reload
+```
+
+**3）使用systemd管理mysqld服务**
+
+```bash
+[mysql@mysql ~]$ sudo systemctl start mysqld
+[mysql@mysql ~]$ sudo systemctl stop mysqld
+[mysql@mysql ~]$ sudo systemctl status mysqld
+```
+
+
+## 1.3 升级
+
+## 1.4 卸载
 
 ```bash
 [mysql@mysql002 ~]$ rpm -qa |grep -i mysql
@@ -2588,4 +2676,5 @@ from (
 
 # 15 innodb cluster
 
-# 16 监控 
+# 16 监控
+
