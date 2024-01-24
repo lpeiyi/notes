@@ -10,13 +10,12 @@
 **3.SQL基础**  
 [Oracle](https://github.com/lpeiyi/notes/blob/main/database/oracle.md)  
 [MaxComputer](https://github.com/lpeiyi/notes/blob/main/database/MaxComputer.md)   
-[SQL练习题](https://github.com/lpeiyi/notes/blob/main/database/SQLEXER/SQLEXER.md)   
+[SQL练习题](https://github.com/lpeiyi/notes/blob/main/sql/SQLEXER/SQLEXER.md)   
 
 **4.操作系统**  
 [Linux](https://github.com/lpeiyi/notes/blob/main/Linux/Linux.md)   
 
-**5.Zabbix**
-
+**5.Zabbix**   
 [Zabbix](https://github.com/lpeiyi/notes/blob/main/zabbix/zabbix.md)
 
 **6.编程语言**   
