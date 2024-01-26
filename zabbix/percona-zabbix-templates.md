@@ -190,7 +190,7 @@ Jan 27 01:46:08 mysql001 systemd[1]: Started SYSV: Zabbix Monitoring Agent.
 
 选择模板文件：
 
-![Alt text](image.png)
+![Alt text](image1/image.png)
 
 导入：
 
