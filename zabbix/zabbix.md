@@ -41,7 +41,7 @@ Zabbix 支持主动轮询和被动捕获，所有的报告、统计信息和配�
 
 安装手册：https://www.zabbix.com/documentation/current/zh/manual/installation/install
 
-![Alt text](image.png)
+![Alt text](image/image.png)
 
 LTS（Long-Term Support）是长期支持版。
 
@@ -108,7 +108,7 @@ data.sql  double.sql  history_pk_prepare.sql  images.sql  Makefile.am  Makefile.
 
 显示以下截图，则说明配置源代码成功。
 
-![Alt text](image-14.png)
+![Alt text](image/image-14.png)
 
 如果有其它情况，一般是缺依赖包，请自行安装。一般通过yum安装能解决绝大部分依赖软件，如果不行，这里提供一个rpm包的下载地址 [https://rpm.pbone.net/](https://rpm.pbone.net/).将rpm包下下来，然后进行rpm安装或者yum安装都可以。
 
@@ -120,9 +120,9 @@ data.sql  double.sql  history_pk_prepare.sql  images.sql  Makefile.am  Makefile.
 
 如果make编译报错，例如：
 
-![Alt text](image-1.png)
+![Alt text](image/image-1.png)
 
-![Alt text](image-2.png)
+![Alt text](image/image-2.png)
 
 解决办法：
 
@@ -178,7 +178,7 @@ daemon $ZABBIX_BIN -c $CONFIG_FILE
 
 修改后配置如下：
 
-![Alt text](image-3.png)
+![Alt text](image/image-3.png)
 
 移动到/etc/init.d/目录下：
 
@@ -198,7 +198,7 @@ daemon $ZABBIX_BIN -c $CONFIG_FILE
 
 修改后配置如下：
 
-![Alt text](image-4.png)
+![Alt text](image/image-4.png)
 
 移动到systemd目录下：
 
@@ -229,7 +229,7 @@ zabbix_server   0:off   1:off   2:on    3:on    4:on    5:on    6:off
 
 PHP要求7.2.5版本以上。
 
-![Alt text](image-12.png)
+![Alt text](image/image-12.png)
 
 安装php：
 
@@ -246,7 +246,7 @@ PHP 7.2.34 (cli) (built: Oct  1 2020 13:37:37) ( NTS )
 
 **2）拷贝PHP文件至httpd根目录下**
 
-![Alt text](image-13.png)
+![Alt text](image/image-13.png)
 
 干吧：
 
@@ -305,7 +305,7 @@ Jan 24 01:25:42 zabbix6.0 systemd[1]: Started The Apache HTTP Server.
 
 在浏览器输入http://zabbix_server_ip/zabbix，zabbix_server_ip为zabbix server服务器的地址。
 
-![Alt text](image-5.png)
+![Alt text](image/image-5.png)
 
 在首页，选择默认的语言，可以修改成中文。
 
@@ -313,11 +313,11 @@ Jan 24 01:25:42 zabbix6.0 systemd[1]: Started The Apache HTTP Server.
 
 主要检查PHP的插件和配置是否满足要求。
 
-![Alt text](image-6.png)
+![Alt text](image/image-6.png)
 
 **3）配置数据库连接信息**
 
-![Alt text](image-7.png)
+![Alt text](image/image-7.png)
 
 连接失败，提示没有这个文件或者文件夹，原因是php没有找到mysql数据库的sock文件。解决办法是在php的配置文件中的pdo_mysql.default_socket参数指定mysql数据库的sock文件路径：
 
@@ -331,11 +331,11 @@ pdo_mysql.default_socket=/data/mysql/3306/data/mysql.sock
 
 **4）设置zabbix server的信息**
 
-![Alt text](image-8.png)
+![Alt text](image/image-8.png)
 
 **5）配置检查**
 
-![Alt text](image-9.png)
+![Alt text](image/image-9.png)
 
 检查无误后就，点击finish就完成了zabbix server web的配置。
 
@@ -343,11 +343,11 @@ pdo_mysql.default_socket=/data/mysql/3306/data/mysql.sock
 
 默认用户名是Admin，默认密码是zabbix。
 
-![Alt text](image-10.png)
+![Alt text](image/image-10.png)
 
 **7）进入web首页**
 
-![Alt text](image-11.png)
+![Alt text](image/image-11.png)
 
 ## 2.3 安装zabbix agent
 
@@ -408,7 +408,7 @@ daemon $ZABBIX_BIN -c $CONFIG_FILE
 ```
 修改后的结果如下图：
 
-![Alt text](image-15.png)
+![Alt text](image/image-15.png)
 
 将启动脚本拷贝到/etc/init.d目录：
 
