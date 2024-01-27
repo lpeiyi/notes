@@ -2678,3 +2678,4 @@ from (
 
 # 16 监控
 
+[percona-zabbix-templates](/zabbix/percona-zabbix-templates.md)
