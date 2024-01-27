@@ -186,7 +186,7 @@ Jan 27 01:46:08 mysql001 systemd[1]: Started SYSV: Zabbix Monitoring Agent.
 
 **9）导入PMP模板**
 
-将网盘中提供的*zabbix_agent_template_percona_mysql_server_ht_2.0.9-sver1.1.8.xml*模板文件导入zabbix web中。步骤如下：
+将网盘中提供的*zbx_export_templates.xml*模板文件导入zabbix web中。步骤如下：
 
 选择模板文件：
 
@@ -253,3 +253,156 @@ Jan 27 01:46:08 mysql001 systemd[1]: Started SYSV: Zabbix Monitoring Agent.
 点击查看所有图形：
 
 ![Alt text](image1/image-13.png)
+
+# 4 PMP自定义监控项
+
+PMP虽然提供了191个监控项，但还缺少了很多常用的**监控指标**，比如：
+
+- **QPS（Queries Per Second）**：每秒的查询数，对数据库而言就是数据库每秒执行的SQL数（含 insert、select、update、delete 等）；
+- **TPS（Transactions Per Second）**：每秒的事务数，TPS对于数据库而言就是数据库每秒执行的事务数，以commit和reooback的成功次数为准；
+- **IOPS（Input/Output Operations Per Second）**：每秒磁盘进行的I/O操作次数。
+
+因此，我们需要在原来的基础上添加一些自定义的监控项，完善监控系统。
+
+PMP添加监控项是基于ss_get_mysql_stats.php文件做修改。下面以TPS为例进行自定义监控指标。
+
+**1）向ss_get_mysql_stats.php添加监控项**
+
+根据TPS的定义，计算公式为：
+
+- TPS = (Com_commit + Com_rollback) / Uptime
+
+这三个状态变量在mysql中用以下方式查看：
+
+```sql
+mysql> show global status like 'com_commit';
++---------------+-------+
+| Variable_name | Value |
++---------------+-------+
+| Com_commit    | 1     |
++---------------+-------+
+1 row in set (0.00 sec)
+
+mysql> show global status like 'com_rollback';
++---------------+-------+
+| Variable_name | Value |
++---------------+-------+
+| Com_rollback  | 0     |
++---------------+-------+
+1 row in set (0.00 sec)
+
+mysql> show global status like 'uptimes';
+Empty set (0.00 sec)
+
+mysql> show global status like 'uptime';
++---------------+--------+
+| Variable_name | Value  |
++---------------+--------+
+| Uptime        | 867149 |
++---------------+--------+
+1 row in set (0.00 sec)
+```
+
+注意：show status仅针对当前会话。show global status是全局的意思。
+
+**向ss_get_mysql_stats.php文件中添加监控项**，以上3个状态变量添加到变量$key中：
+
+```bash
+[root@mysql001 scripts]# vim /var/lib/zabbix/percona/scripts/ss_get_mysql_stats.php
+
+#在$keys的最后添加Com_commit、Com_rollback和Uptime
+$keys = array(
+      'Key_read_requests'           =>  'gg',
+      'Key_reads'                   =>  'gh',
+      'Key_write_requests'          =>  'gi',
+      'Key_writes'                  =>  'gj',
+      ...
+      'wsrep_flow_control_recv'     =>  'qn',
+      'pool_reads'                  =>  'qo',
+      'pool_read_requests'          =>  'qp',
+      #添加：
+      'Com_commit'                  =>  'qq',
+      'Com_rollback'                =>  'qr',
+      'Uptime'                      =>  'qs',
+   );
+```
+
+**2）修改zabbix agent配置文件，定义监控项**
+
+```bash
+[root@mysql001 scripts]# vim /usr/local/zabbix/etc/zabbix_agentd.conf.d/userparameter_percona_mysql.conf
+
+#在最后添加：
+UserParameter=MySQL.Com-commit,/var/lib/zabbix/percona/scripts/get_mysql_stats_wrapper.sh qq
+UserParameter=MySQL.Com-rollback,/var/lib/zabbix/percona/scripts/get_mysql_stats_wrapper.sh qr
+UserParameter=MySQL.Uptime,/var/lib/zabbix/percona/scripts/get_mysql_stats_wrapper.sh qs
+```
+
+**3）测试**
+
+```bash
+[root@mysql001 scripts]# cd /var/lib/zabbix/percona/scripts/
+[root@mysql001 scripts]# ./get_mysql_stats_wrapper.sh qq
+1
+[root@mysql001 scripts]# ./get_mysql_stats_wrapper.sh qr
+0
+[root@mysql001 scripts]# ./get_mysql_stats_wrapper.sh qs
+868652
+```
+
+**4）重启zabbix agent，生效userparameter_percona_mysql.conf配置文件**
+
+```bash
+[root@mysql001 scripts]# service zabbix_agentd restart
+Restarting zabbix_agentd (via systemctl):                  [  OK  ]
+
+[root@mysql001 scripts]# service zabbix_agentd status
+● zabbix_agentd.service - SYSV: Zabbix Monitoring Agent
+   Loaded: loaded (/etc/rc.d/init.d/zabbix_agentd; bad; vendor preset: disabled)
+   Active: active (running) since Sat 2024-01-27 23:39:26 CST; 1s ago
+     Docs: man:systemd-sysv-generator(8)
+  Process: 21156 ExecStop=/etc/rc.d/init.d/zabbix_agentd stop (code=exited, status=0/SUCCESS)
+  Process: 21171 ExecStart=/etc/rc.d/init.d/zabbix_agentd start (code=exited, status=0/SUCCESS)
+ Main PID: 21180 (zabbix_agentd)
+   CGroup: /system.slice/zabbix_agentd.service
+           ├─21180 /usr/local/zabbix/sbin/zabbix_agentd -c /usr/local/zabbix/etc/zabbix_agentd.conf
+           ├─21181 /usr/local/zabbix/sbin/zabbix_agentd: collector [idle 1 sec]
+           ├─21182 /usr/local/zabbix/sbin/zabbix_agentd: listener #1 [waiting for connection]
+           ├─21183 /usr/local/zabbix/sbin/zabbix_agentd: listener #2 [waiting for connection]
+           ├─21184 /usr/local/zabbix/sbin/zabbix_agentd: listener #3 [waiting for connection]
+           └─21185 /usr/local/zabbix/sbin/zabbix_agentd: active checks #1 [idle 1 sec]
+
+Jan 27 23:39:26 mysql001 systemd[1]: Starting SYSV: Zabbix Monitoring Agent...
+Jan 27 23:39:26 mysql001 zabbix_agentd[21171]: Starting Zabbix Agent: [  OK  ]
+Jan 27 23:39:26 mysql001 systemd[1]: Started SYSV: Zabbix Monitoring Agent.
+```
+
+**5）web模板创建监控项**
+
+依次点击`Configuration`->`Templates`->`Items`->`Create item`。
+
+**Com Commit:**
+
+![Alt text](image-6.png)
+
+**Com Rollback:**
+
+![Alt text](image-7.png)
+
+**Uptime:**
+
+![Alt text](image-8.png)
+
+**注意**：以上三个监控项，还需设置**Preprocessing**为Change per second，意思是每秒增量。
+
+![Alt text](image-9.png)
+
+添加标签（可选）：
+
+![Alt text](image-10.png)
+
+**6）配置TPS**
+
+与上面三个监控项不同，TPS需要用公式计算，因此Item Type需要设置为`Calculated`，代表计算的意思。计算公式添加在`Formula`中。
+
+![Alt text](image-11.png)

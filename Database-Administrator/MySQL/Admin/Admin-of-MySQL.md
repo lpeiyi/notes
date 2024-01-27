@@ -1,3 +1,7 @@
+**目录**
+
+[toc]
+
 # 1 安装和升级MySQL数据库（社区版）
 
 ## 1.1 安装
@@ -570,6 +574,8 @@ mysql> show variables like 'log_error_services';
 
 ### 3.1.2 log_filter_internal
 
+**1）日志优先级**
+
 ```sql
 mysql> show variables like 'log_error_verbosity';
 +---------------------+-------+
@@ -578,6 +584,12 @@ mysql> show variables like 'log_error_verbosity';
 | log_error_verbosity | 3     |
 +---------------------+-------+
 1 row in set (0.00 sec)
+```
+
+**2）屏蔽错误事件**
+
+```bash
+
 ```
 
 ### 3.1.3 log_sink_internal
@@ -2678,4 +2690,51 @@ from (
 
 # 16 监控
 
+## 16.1 基于zabbix的pmp解决方案
+
 [percona-zabbix-templates](/zabbix/percona-zabbix-templates.md)
+
+## 16.2 基于
+
+## 16.3 MySQL常用监控指标
+
+# 17 MySQL优化
+
+# 18 基准测试工具
+
+## 18.1 mysqlslap
+
+**1）创建mytest数据库和mytest表，测试数据是向表中插入一条记录并进行一次查询，并发50个客户端，重复执行200次。** 
+
+```bash
+[mysql@mysql001 ~]$ mysqlslap -uroot -pMysql123. --create-schema=mytest --delimiter=";" --create="create table mytest(id int not null auto_increment primary key,c1 varchar(255))" --query="insert into mytest(c1) values(md5(rand()));select c1 from mytest;" --concurrency=50 --iterations=200;
+
+Benchmark
+        Average number of seconds to run all queries: 0.050 seconds
+        Minimum number of seconds to run all queries: 0.017 seconds
+        Maximum number of seconds to run all queries: 0.409 seconds
+        Number of clients running queries: 50
+        Average number of queries per client: 2
+```
+
+**2）两次读写并发，第一次100，第二次200，自动生成SQL脚本，测试表包含20个init字段，30个char字段，每次执行2000查询请求。测试引擎分别是myisam，innodb。**
+
+```bash
+[mysql@mysql001 binlog]$ mysqlslap -uroot -pMysql123. --concurrency=100,200 --iterations=1 --number-int-cols=20 --number-char-cols=30 --auto-generate-sql --auto-generate-sql-add-autoincrement --auto-generate-sql-load-type=mixed --engine=innodb --number-of-queries=2000 --verbose;
+mysqlslap: [Warning] Using a password on the command line interface can be insecure.
+Benchmark
+        Running for engine innodb
+        Average number of seconds to run all queries: 0.721 seconds
+        Minimum number of seconds to run all queries: 0.721 seconds
+        Maximum number of seconds to run all queries: 0.721 seconds
+        Number of clients running queries: 100
+        Average number of queries per client: 20
+
+Benchmark
+        Running for engine innodb
+        Average number of seconds to run all queries: 0.804 seconds
+        Minimum number of seconds to run all queries: 0.804 seconds
+        Maximum number of seconds to run all queries: 0.804 seconds
+        Number of clients running queries: 200
+        Average number of queries per client: 10
+```

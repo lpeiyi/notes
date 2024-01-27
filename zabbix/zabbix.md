@@ -455,3 +455,80 @@ Jan 25 00:50:36 mysql001 systemd[1]: Started SYSV: Zabbix Monitoring Agent.
 ```
 
 另一台192.168.131.100也用同样的方式部署zabbix agent。
+
+# 3 常见问题解决
+
+## 3.1 中文图形字段名乱码
+
+问题呈现：
+
+![Alt text](image.png)
+
+解决办法有两个，二选一即可。
+
+
+**1）将web界面默认语言设置为英文**
+
+![Alt text](image-1.png)
+
+设置好后的效果如下：
+
+![Alt text](image-2.png)
+
+**2）保留中文的解决办法**
+
+有些朋友比较喜欢用中文界面，因此方法1的办法不适用，现在来看保留中文字体的解决办法。
+
+乱码是由于zabbix的php文件的字体设置文件不支持中文，解决的思路就是更换php的字体设置文件。
+
+在web侧的主机上进入到C:\Windows\Fonts目录，选择其中喜欢的一个字体文件，我个人比较喜欢微软雅黑：
+
+![Alt text](image-3.png)
+
+复制到桌面：
+
+![Alt text](image-4.png)
+
+然后将其中一个.ttc文件上传到zabbix server服务器上的httpd目录下：
+
+```bash
+[root@zabbix6 fonts]# find / -name fonts
+/var/www/html/zabbix/assets/fonts
+```
+
+将.ttc文件上传到/var/www/html/zabbix/assets/fonts下。注意：可能每个人的安装路径不太一样，请根据实际情况操作。
+
+上传后查看：
+
+```bash
+[root@zabbix6 fonts]# ls
+DejaVuSans.ttf  msyh.ttc
+```
+
+将原本的.ttf文件备份，再将上传的文件重命名：
+
+```bash
+[root@zabbix6 fonts]# mv DejaVuSans.ttf DejaVuSans.ttf.bak
+[root@zabbix6 fonts]# mv msyh.ttc DejaVuSans.ttf
+```
+
+最后重启zabbix server服务:
+
+```bash
+[root@zabbix6 fonts]# service zabbix_server restart
+Restarting zabbix_server (via systemctl):                  [  OK  ]
+[root@zabbix6 fonts]# service zabbix_server status
+● zabbix_server.service - SYSV: Zabbix Monitoring Server
+   Loaded: loaded (/etc/rc.d/init.d/zabbix_server; bad; vendor preset: disabled)
+   Active: active (running) since Sat 2024-01-27 15:51:52 CST; 2s ago
+     Docs: man:systemd-sysv-generator(8)
+  Process: 20416 ExecStop=/etc/rc.d/init.d/zabbix_server stop (code=exited, status=0/SUCCESS)
+  Process: 20436 ExecStart=/etc/rc.d/init.d/zabbix_server start (code=exited, status=0/SUCCESS)
+ Main PID: 20446 (zabbix_server)
+```
+
+到web界面查看：
+
+![Alt text](image-5.png)
+
+问题解决。
