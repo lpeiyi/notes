@@ -71,7 +71,7 @@ containerd  containerd-shim  containerd-shim-runc-v2  ctr  docker  dockerd  dock
 
 ```bash
 [root@zabbix6 local]# vim /etc/sysctl.conf
-#添加
+#修改
 vm.max_map_count=262144
 
 [root@zabbix6 local]# sysctl -p
