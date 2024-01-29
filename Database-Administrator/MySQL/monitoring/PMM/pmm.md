@@ -18,7 +18,7 @@ PMM针对操作系统的部分也提供了硬盘、网络、CPU和RAM的监控�
 
 更详细的介绍请参考官方文档：https://docs.percona.com/percona-monitoring-and-management/index.html
 
-# 2 安装PMM Server
+# 2 PMM Server部署
 
 官方提供了多种安装方式，优缺点如下：
 
@@ -138,7 +138,400 @@ c99a87c5718b   percona/pmm-server:2   "/opt/entrypoint.sh"   18 minutes ago   Up
 
 ![Alt text](image-5.png)
 
-# 安装问题
+# 3 PMM Client
+
+PMM Client安装在每个要监视的数据库主机上。它收集服务器指标，一般系统指标和查询分析数据，以获得完整的性能概述。收集的数据发送到PMM服务器。
+
+## 3.1 PMM Client安装
+
+**1）下载安装包**
+
+PMM Client安装的方法有两种：
+
+- Docker：将PMM Client作为Docker容器运行；
+- 安装包：下载安装包手动安装。
+
+最常用的是使用二进制包进行安装，安装包在percona的首页下载：
+
+![Alt text](image-6.png)
+
+下载哪个版本看个人喜好，推荐下载最新版本。[https://www.percona.com/downloads](https://www.percona.com/downloads)
+
+如果服务器能联网，也可以直接下载到服务器上：
+
+```bash
+wget https://downloads.percona.com/downloads/pmm2/2.41.0/binary/tarball/pmm2-client-2.41.0.tar.gz
+```
+
+**2）解包并重命名**
+
+```bash
+[root@mysql001 local]# cd /usr/local/
+[root@mysql001 local]# tar -xvf pmm2-client-2.41.0.tar.gz
+```
+
+**3）编译安装**
+
+```bash
+[root@mysql001 local]# cd pmm2-client-2.41.0
+[root@mysql001 pmm2-client-2.41.0]# export PMM_DIR=/usr/local/percona/pmm2
+[root@mysql001 pmm2-client-2.41.0]# echo $PMM_DIR
+/usr/local/percona/pmm2
+[root@mysql001 pmm2-client-2.41.0]# ./install_tarball
+Installing into /usr/local/percona/pmm2...
+```
+
+PMM Client的安装路径在/usr/local/percona/pmm2，目录结构如下：
+
+```bash
+[root@mysql001 pmm2]# cd /usr/local/percona/pmm2
+[root@mysql001 pmm2]# ls
+bin  collectors  config  exporters  tools
+```
+
+**4）添加环境变量**
+
+```bash
+[root@mysql001 pmm2]# vim /etc/profile
+#添加
+export PMM_DIR=/usr/local/percona/pmm2
+export PATH=$PATH:$PMM_DIR/bin
+
+[root@mysql001 pmm2]# source /etc/profile
+```
+
+至此，PMM Client安装完毕。
+
+完成PMM Client安装后，需要做的事情有：
+
+1. 向PMM服务器注册节点;
+2. 根据类型配置和添加业务。
+
+## 3.2 向PMM服务器注册节点
+
+**1）注册pmm-agent**
+
+```bash
+[root@mysql001 ~]# pmm-agent setup --config-file=/usr/local/percona/pmm2/config/pmm-agent.yaml --server-address=192.168.131.60 --server-insecure-tls --server-username=admin --server-password=pmm123.
+
+INFO[2024-01-29T19:10:55.365+08:00] Loading configuration file /usr/local/percona/pmm2/config/pmm-agent.yaml.  component=setup
+INFO[2024-01-29T19:10:55.365+08:00] Temporary directory is not configured and will be set to /usr/local/percona/pmm2/tmp  component=setup
+INFO[2024-01-29T19:10:55.365+08:00] Using /usr/local/percona/pmm2/exporters/node_exporter  component=setup
+INFO[2024-01-29T19:10:55.365+08:00] Using /usr/local/percona/pmm2/exporters/mysqld_exporter  component=setup
+INFO[2024-01-29T19:10:55.365+08:00] Using /usr/local/percona/pmm2/exporters/mongodb_exporter  component=setup
+INFO[2024-01-29T19:10:55.365+08:00] Using /usr/local/percona/pmm2/exporters/postgres_exporter  component=setup
+INFO[2024-01-29T19:10:55.365+08:00] Using /usr/local/percona/pmm2/exporters/proxysql_exporter  component=setup
+INFO[2024-01-29T19:10:55.365+08:00] Using /usr/local/percona/pmm2/exporters/rds_exporter  component=setup
+INFO[2024-01-29T19:10:55.365+08:00] Using /usr/local/percona/pmm2/exporters/azure_exporter  component=setup
+INFO[2024-01-29T19:10:55.365+08:00] Using /usr/local/percona/pmm2/exporters/vmagent  component=setup
+INFO[2024-01-29T19:10:55.365+08:00] Updating PMM Server address from "192.168.131.60" to "192.168.131.60:443".  component=setup
+Checking local pmm-agent status...
+pmm-agent is not running.
+Registering pmm-agent on PMM Server...
+Registered.
+Configuration file /usr/local/percona/pmm2/config/pmm-agent.yaml updated.
+Please start pmm-agent: `pmm-agent --config-file=/usr/local/percona/pmm2/config/pmm-agent.yaml`.
+```
+
+看到有`Registered`字眼说明祖册成功。
+
+pmm-agent setup参数说明：
+
+- setup: 用来启动PMM agent的setup 脚本，用于设置和启动 PMM agent。
+- --config-file：指定PMM agent的配置文件的位置。
+- --server-address: 这个参数指定了 PMM server 的地址。
+- --server-insecure-tls: 这个参数指示 PMM agent 在与 PMM server 进行 TLS 通信时忽略证书验证。
+- --server-username: 这个参数指定了用于连接到 PMM server 的用户名。
+- --server-password: 这个参数指定了用于连接到 PMM server 的密码。
+
+**2）配置pmm-agent日志**
+
+默认情况下，pmm-agent将消息发送到stderr和系统日志(Linux上的syslogd或journald)。要配置单独的日志文件，需要编辑pmm-agent启动脚本。
+
+pmm-agent启动脚本使用systemd系统来管理，配置日志文件需要注意：
+
+- 脚本文件:/usr/lib/systemd/system/pmm-agent.service
+- 参数:StandardError
+- 默认值:“/var/log/pmm-agent.log”
+
+```bash
+[root@mysql001 config]# vim /usr/local/pmm2-client-2.41.0/config/pmm-agent.service
+```
+
+根据自己的环境修改`ExecStart`，添加`StandardError`。
+
+修改后的内容如下：
+
+```bash
+[Unit]
+Description=pmm-agent
+After=time-sync.target network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/percona/pmm2/bin/pmm-agent --config-file=/usr/local/percona/pmm2/config/pmm-agent.yaml
+Restart=always
+RestartSec=2s
+StandardError=file:/var/log/pmm-agent.log
+
+[Install]
+WantedBy=multi-user.target
+```
+
+重新加载systemd管理器配置：
+
+```bash
+[root@mysql001 config]# cp /usr/local/pmm2-client-2.41.0/config/pmm-agent.service /usr/lib/systemd/system/
+[root@mysql001 config]# systemctl daemon-reload
+```
+
+**3）启动pmmagent**
+
+```bash
+[root@mysql001 config]# systemctl start pmm-agent
+[root@mysql001 config]# systemctl status pmm-agent
+● pmm-agent.service - pmm-agent
+   Loaded: loaded (/usr/lib/systemd/system/pmm-agent.service; disabled; vendor preset: disabled)
+   Active: active (running) since Mon 2024-01-29 20:27:53 CST; 1s ago
+ Main PID: 16665 (pmm-agent)
+   CGroup: /system.slice/pmm-agent.service
+           ├─16665 /usr/local/percona/pmm2/bin/pmm-agent --config-file=/usr/local/percona/pmm2/config/pmm-agent.yaml
+           ├─16676 /usr/local/percona/pmm2/exporters/node_exporter --collector.bonding --collector.buddyinfo --collector.cpu --colle...
+           └─16682 /usr/local/percona/pmm2/exporters/vmagent -envflag.enable=true -envflag.prefix=VMAGENT_ -httpListenAddr=127.0.0.1...
+
+Jan 29 20:27:54 mysql001 pmm-agent[16665]: time="2024-01-29T20:27:54.208+08:00" level=info msg="ts=2024-01-29T12:27:54.208Z c...xporter
+Jan 29 20:27:54 mysql001 pmm-agent[16665]: time="2024-01-29T20:27:54.215+08:00" level=info msg="2024-01-29T12:27:54.209Z\tinfo\tVict...
+Jan 29 20:27:54 mysql001 pmm-agent[16665]: time="2024-01-29T20:27:54.222+08:00" level=info msg="2024-01-29T12:27:54.222Z\tinfo\tVict...
+Jan 29 20:27:54 mysql001 pmm-agent[16665]: time="2024-01-29T20:27:54.238+08:00" level=info msg="2024-01-29T12:27:54.238Z\tinf...m_agent
+Jan 29 20:27:54 mysql001 pmm-agent[16665]: time="2024-01-29T20:27:54.238+08:00" level=info msg="2024-01-29T12:27:54.238Z\tinf...m_agent
+Jan 29 20:27:54 mysql001 pmm-agent[16665]: time="2024-01-29T20:27:54.238+08:00" level=info msg="2024-01-29T12:27:54.238Z\tinf...m_agent
+Jan 29 20:27:54 mysql001 pmm-agent[16665]: time="2024-01-29T20:27:54.238+08:00" level=info msg="2024-01-29T12:27:54.238Z\tinf...m_agent
+Jan 29 20:27:54 mysql001 pmm-agent[16665]: time="2024-01-29T20:27:54.239+08:00" level=info msg="2024-01-29T12:27:54.238Z\tinfo\tVict...
+Jan 29 20:27:54 mysql001 pmm-agent[16665]: time="2024-01-29T20:27:54.239+08:00" level=info msg="2024-01-29T12:27:54.239Z\tinf...m_agent
+Jan 29 20:27:54 mysql001 pmm-agent[16665]: time="2024-01-29T20:27:54.239+08:00" level=info msg="2024-01-29T12:27:54.239Z\tinf...m_agent
+Hint: Some lines were ellipsized, use -l to show in full.
+```
+
+**4）设置开机自启**
+
+```bash
+[root@mysql001 config]# systemctl enable pmm-agent
+Created symlink from /etc/systemd/system/multi-user.target.wants/pmm-agent.service to /usr/lib/systemd/system/pmm-agent.service.
+```
+
+## 3.3 查看pmm-agent监控
+
+**1）检查pmm-agent状态**
+
+```bash
+[root@mysql001 config]# pmm-admin status
+Agent ID : /agent_id/4de14939-751a-46b6-812b-3ad4cd0f970f
+Node ID  : /node_id/2d9b4c14-c4c5-4432-9a2d-fce35a0633ac
+Node name: mysql001
+
+PMM Server:
+        URL    : https://192.168.131.60:443/
+        Version: 2.41.0
+
+PMM Client:
+        Connected        : true
+        Time drift       : -53.076956ms
+        Latency          : 403.674µs
+        Connection uptime: 100
+        pmm-admin version: 2.41.0
+        pmm-agent version: 2.41.0
+Agents:
+        /agent_id/2d3b82ae-94be-43e5-b372-049a99a18b68 node_exporter Running 42000
+        /agent_id/53f78922-dc94-412e-abbc-f5bda5e368b5 vmagent Running 42001
+```
+
+**2）查看监控数据**
+
+![Alt text](image-7.png)
+
+Node Names为主机名hostname。
+
+如果想观察操作系统的详细监控数据，在以下面板查看：
+
+![Alt text](image-8.png)
+
+# 4 设置PMM来监视MySQ
+
+## 4.1 服务添加介绍
+
+PMM来监视MySQ的实现方式是PMM Client从MySQL数据库收集指标。
+
+PMM添加MySQL服务的步骤如下：
+
+1. 创建PMM帐户并设置权限。
+2. 选择一个数据源:
+   - 慢速查询日志；
+   - 或者，性能模式。
+3. 配置:
+   - 查询响应时间;
+   - 表统计；
+   - 用户数据。
+4. 添加服务。
+5. 检查服务。
+
+PMM还支持从PostgreSQL、MariaDB、Percona服务器和Percona XtraDB集群收集指标。详见官方文档：[https://docs.percona.com/percona-monitoring-and-management/setting-up/client/mysql.html](https://docs.percona.com/percona-monitoring-and-management/setting-up/client/mysql.html)
+
+## 4.2 依赖检查
+
+添加前确保已经完成如下事项：
+
+- PMM服务器已经安装并运行，并且可以从客户机节点访问一个已知的IP地址。
+- 已安装PMM Client，节点已在PMM Server上注册。
+- 在PMM Client主机上拥有超级用户(root)访问权限。
+
+## 4.3 添加MySQL服务
+
+**1）创建PMM数据库用户**
+
+On MySQL 8.0：
+
+```sql
+mysql>
+CREATE USER 'pmm'@'192.168.131.99' IDENTIFIED BY 'Pmm123123.' WITH MAX_USER_CONNECTIONS 10;
+GRANT SELECT, PROCESS, REPLICATION CLIENT, RELOAD, BACKUP_ADMIN ON *.* TO 'pmm'@'192.168.131.99';
+```
+
+On MySQL 5.7：
+
+```sql
+mysql>
+CREATE USER 'pmm'@'192.168.131.99' IDENTIFIED BY 'Pmm123123.' WITH MAX_USER_CONNECTIONS 10;
+GRANT SELECT, PROCESS, REPLICATION CLIENT, RELOAD ON *.* TO 'pmm'@'192.168.131.99';
+```
+
+查看用户：
+
+```sql
+mysql> select user,host from mysql.user where user = 'pmm';
++------+-----------+
+| user | host      |
++------+-----------+
+| pmm  | 192.168.131.99 |
++------+-----------+
+mysql> show grants for pmm@192.168.131.99;
++-------------------------------------------------------------------------------+
+| Grants for pmm@192.168.131.99                                                      |
++-------------------------------------------------------------------------------+
+| GRANT SELECT, RELOAD, PROCESS, REPLICATION CLIENT ON *.* TO `pmm`@`192.168.131.99` |
+| GRANT BACKUP_ADMIN ON *.* TO `pmm`@`192.168.131.99`                                |
++-------------------------------------------------------------------------------+
+```
+
+**2）选择并配置一个源**
+
+指标源两种：慢查询日志和Performance_Schema。
+
+慢速查询日志和Performance_Schema指标源各自的优缺点，如下：
+
+![Alt text](image-9.png)
+
+数据库不同版本的数据源建议：
+
+![Alt text](image-10.png)
+
+
+**1.慢查询日志源的设置方法**
+
+设置慢查询日志的相关参数，动态设置：
+
+```sql
+mysql> 
+SET GLOBAL slow_query_log = 1;
+SET GLOBAL log_output = 'FILE';
+SET GLOBAL long_query_time = 1;
+SET GLOBAL log_slow_admin_statements = 1;
+SET GLOBAL log_slow_slave_statements = 1;
+```
+
+或者，在配置文件my.cnf中添加这些参数：
+
+```bash
+slow_query_log=ON
+log_output=FILE
+long_query_time=1
+log_slow_admin_statements=ON
+log_slow_slave_statements=ON
+```
+
+下次重启后生效。
+
+**注意**：动态设置好之后，也建议将这些参数固化到配置文件中，要不然下次重启之后会失效。
+
+**2.Performance_Schema源的设置方法**
+
+设置Performance_Schema的相关参数，动态设置：
+
+```sql
+mysql>
+UPDATE performance_schema.setup_instruments SET ENABLED = 'YES', TIMED = 'YES' WHERE NAME LIKE 'statement/%';
+UPDATE performance_schema.setup_consumers SET ENABLED = 'YES' WHERE NAME LIKE '%statements%';
+```
+
+或者，在配置文件my.cnf中添加这些参数：
+
+```bash
+performance_schema=ON
+performance-schema-instrument='statement/%=ON'
+performance-schema-consumer-events-statements-current=ON
+performance-schema-consumer-events-statements-history=ON
+performance-schema-consumer-events-statements-history-long=ON
+performance-schema-consumer-statements-digest=ON
+innodb_monitor_enable=all
+```
+
+events_transactions_current
+
+下次重启后生效。
+
+**注意**：动态设置好之后，也建议将这些参数固化到配置文件中，要不然下次重启之后会失效。
+
+**3）添加服务**
+
+```bash
+[root@mysql001 config]# pmm-admin add mysql --username=pmm --password=Pmm123123. --query-source=slowlog mysql001-mysql 192.168.131.99:3306
+MySQL Service added.
+Service ID  : /service_id/60b91fd3-065f-41a9-892e-1eea8ca00d43
+Service name: mysql001-mysql
+
+Table statistics collection enabled (the limit is 1000, the actual table count is 365).
+```
+
+参数说明：
+
+- pmm-admin add mysql：添加一个新的MySQL PMM服务。
+- --username=pmm：MySQL用户名。
+- --password=Pmm123123：MySQL用户名密码。
+- --query-source=slowlog：指标源是慢查询日志。
+- mysql001-mysql：服务名，默认是{hostname}-mysql。
+- 192.168.131.99:3306：这是MySQL实例的地址和端口。
+
+**4）检查服务状态**
+
+PMM用户界面查看，依次点击`⚙`→`Configuration`→`Inventory`：
+
+![Alt text](image-11.png)
+
+
+也可在命令行检查：
+
+```
+[root@mysql001 config]# pmm-admin inventory list services --service-type=mysql
+Services list.
+
+Service type           Service name         Address and Port  Service ID
+MySQL                  mysql001-mysql       192.168.131.99:3306 /service_id/60b91fd3-065f-41a9-892e-1eea8ca00d43
+```
+
+**5）查看MySQL实例监控页面**
+
+![Alt text](image-12.png)
+
+# PMM Server安装问题
 
 **1）列出当前运行的 Docker 容器**
 
