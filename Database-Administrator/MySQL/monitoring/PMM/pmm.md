@@ -26,6 +26,8 @@ PMM针对操作系统的部分也提供了硬盘、网络、CPU和RAM的监控�
 
 最常用的方式是Docker。
 
+# 2.1 PMM Server安装
+
 **1）安装docker**
 
 参考文章：[http://t.csdnimg.cn/N752u](http://t.csdnimg.cn/N752u)
@@ -137,6 +139,204 @@ c99a87c5718b   percona/pmm-server:2   "/opt/entrypoint.sh"   18 minutes ago   Up
 首页如下：
 
 ![Alt text](image-5.png)
+
+# 2.2 PMM Server安装问题
+
+**1）列出当前运行的 Docker 容器**
+
+docker run启动pmm-server容器后查看：
+
+![Alt text](image-2.png)
+
+状态显示`unhealthy`，正常来说应该是`healthy`，这显然有问题。
+
+**2）查看pmm-server容器日志**
+
+```bash
+[root@zabbix6 ~]# docker logs 7044dd8d6aca > docker.log
+```
+
+异常信息如下：
+
+```bash
+[root@zabbix6 ~]# vim docker.log
+2024-01-28 17:04:26,213 INFO spawned: 'clickhouse' with pid 283
+2024-01-28 17:04:26,383 INFO exited: clickhouse (exit status 232; not expected)
+2024-01-28 17:04:32,683 INFO spawned: 'grafana' with pid 300
+2024-01-28 17:04:32,684 INFO spawned: 'qan-api2' with pid 301
+2024-01-28 17:04:32,690 INFO exited: grafana (exit status 2; not expected)
+2024-01-28 17:04:32,691 INFO exited: qan-api2 (exit status 1; not expected)
+```
+
+根据提示，大概的意思是clickhouse、grafana、qan-api2进程退出。
+
+**3）查看pmm-server容器进程**
+
+```bash
+[root@zabbix6 bin]# docker exec -it 7044dd8d6aca /bin/bash
+[root@7044dd8d6aca opt] # supervisorctl
+alertmanager                     RUNNING   pid 25, uptime 0:06:00
+clickhouse                       FATAL     Exited too quickly (process log may have details)
+dbaas-controller                 STOPPED   Not started
+grafana                          FATAL     Exited too quickly (process log may have details)
+nginx                            RUNNING   pid 22, uptime 0:06:00
+pmm-agent                        RUNNING   pid 114, uptime 0:05:57
+pmm-managed                      RUNNING   pid 37, uptime 0:06:00
+pmm-update-perform               STOPPED   Not started
+pmm-update-perform-init          FATAL     Exited too quickly (process log may have details)
+postgresql                       RUNNING   pid 13, uptime 0:06:00
+prometheus                       STOPPED   Not started
+qan-api2                         BACKOFF   Exited too quickly (process log may have details)
+victoriametrics                  RUNNING   pid 23, uptime 0:06:00
+vmalert                          RUNNING   pid 24, uptime 0:06:00
+vmproxy                          RUNNING   pid 32, uptime 0:06:00
+```
+
+印证了刚刚的推论，一大堆进程都没有运行，看起来问题很多啊。
+
+**4）查看具体进程日志**
+
+优先看看这几个进程clickhouse、grafana、qan-api2日志。
+
+**clickhouse:**
+
+```bash
+supervisor> tail clickhouse
+. main @ 0x0000000007111f8f in /usr/bin/clickhouse
+1.  ? @ 0x00007f5ed0cd1eb0 in ?
+2.  ? @ 0x00007f5ed0cd1f60 in ?
+3.  _start @ 0x000000000634716e in /usr/bin/clickhouse
+ (version 23.8.2.7 (official build))
+Processing configuration file '/etc/clickhouse-server/config.xml'.
+Logging information to /srv/logs/clickhouse-server.log
+Poco::Exception. Code: 1000, e.code() = 0, Exception: Could not determine local time zone: filesystem error: in canonical: Operation not permitted ["/usr/share/zoneinfo/"] [""], Stack trace (when copying this message, always include the lines below):
+
+1. DateLUT::DateLUT() @ 0x000000000c5f13d8 in /usr/bin/clickhouse
+2. OwnPatternFormatter::OwnPatternFormatter(bool) @ 0x000000000c8e224e in /usr/bin/clickhouse
+3. Loggers::buildLoggers(Poco::Util::AbstractConfiguration&, Poco::Logger&, String const&) @ 0x000000000c8d846d in /usr/bin/clickhouse
+4. BaseDaemon::initialize(Poco::Util::Application&) @ 0x000000000c8b6082 in /usr/bin/clickhouse
+5. DB::Server::initialize(Poco::Util::Application&) @ 0x000000000c68bef8 in /usr/bin/clickhouse
+6. Poco::Util::Application::run() @ 0x0000000015b1e6fa in /usr/bin/clickhouse
+7. DB::Server::run() @ 0x000000000c68bcbe in /usr/bin/clickhouse
+8. Poco::Util::ServerApplication::run(int, char**) @ 0x0000000015b2d819 in /usr/bin/clickhouse
+9. mainEntryClickHouseServer(int, char**) @ 0x000000000c688a8a in /usr/bin/clickhouse
+10. main @ 0x0000000007111f8f in /usr/bin/clickhouse
+11. ? @ 0x00007f85da433eb0 in ?
+12. ? @ 0x00007f85da433f60 in ?
+13. _start @ 0x000000000634716e in /usr/bin/clickhouse
+ (version 23.8.2.7 (official build))
+```
+
+**grafana:**
+
+```bash
+supervisor> tail grafana
+000
+0x00007ffdba484180:  0x0000000000000001  0xc1999515713efe00
+0x00007ffdba484190:  0x00007ffdba4843a0  0x00000000004324db <runtime.(*pageAlloc).allocRange+0x000000000000021b>
+0x00007ffdba4841a0:  0x0000000005d202e8  0x0000000002030000 <github.com/grafana/grafana/pkg/services/libraryelements.(*LibraryElementService).getLibraryElementByUid+0x0000000000000240>
+0x00007ffdba4841b0:  0x0000000000000004  0x0000000000000000
+0x00007ffdba4841c0:  0x0000000000000002  0xc1999515713efe00
+0x00007ffdba4841d0:  0x00007efd709d6740  0x0000000000000006
+0x00007ffdba4841e0:  0x0000000000000001  0x00007ffdba484510
+0x00007ffdba4841f0:  0x0000000005cf3920  0x00007efd70a2dd06
+0x00007ffdba484200:  0x00007efd70bd4e90  0x00007efd70a017f3
+0x00007ffdba484210:  0x0000000000000020  0x0000000000000000
+0x00007ffdba484220:  0x000000000361013e  0x0000000000000006
+0x00007ffdba484230:  0x0000000005eb988a  0x0000000000000000
+
+goroutine 1 [running]:
+runtime.systemstack_switch()
+        /usr/local/go/src/runtime/asm_amd64.s:474 +0x8 fp=0xc000072740 sp=0xc000072730 pc=0x4737c8
+runtime.main()
+        /usr/local/go/src/runtime/proc.go:169 +0x6d fp=0xc0000727e0 sp=0xc000072740 pc=0x441aed
+runtime.goexit()
+        /usr/local/go/src/runtime/asm_amd64.s:1650 +0x1 fp=0xc0000727e8 sp=0xc0000727e0 pc=0x4757a1
+
+rax    0x0
+rbx    0x7efd709d6740
+rcx    0x7efd70a7a58c
+rdx    0x6
+rdi    0x187
+rsi    0x187
+rbp    0x187
+rsp    0x7ffdba484140
+r8     0x7ffdba484210
+r9     0x7efd70b8a4e0
+r10    0x8
+r11    0x246
+r12    0x6
+r13    0x7ffdba484510
+r14    0x5cf3920
+r15    0x6
+rip    0x7efd70a7a58c
+rflags 0x246
+cs     0x33
+fs     0x0
+gs     0x0
+```
+
+**qan-api2:**
+
+```bash
+supervisor> tail qan-api2
+: connect: connection refused
+stdlog: qan-api2 v2.41.0.
+time="2024-01-28T17:52:00.514+00:00" level=info msg="Log level: info."
+time="2024-01-28T17:52:00.514+00:00" level=info msg="DSN: clickhouse://127.0.0.1:9000?database=pmm&block_size=10000&pool_size=2" component=main
+stdlog: Connection: dial tcp 127.0.0.1:9000: connect: connection refused
+stdlog: qan-api2 v2.41.0.
+time="2024-01-28T17:52:25.252+00:00" level=info msg="Log level: info."
+time="2024-01-28T17:52:25.252+00:00" level=info msg="DSN: clickhouse://127.0.0.1:9000?database=pmm&block_size=10000&pool_size=2" component=main
+stdlog: Connection: dial tcp 127.0.0.1:9000: connect: connection refused
+stdlog: qan-api2 v2.41.0.
+time="2024-01-28T17:52:50.486+00:00" level=info msg="Log level: info."
+time="2024-01-28T17:52:50.486+00:00" level=info msg="DSN: clickhouse://127.0.0.1:9000?database=pmm&block_size=10000&pool_size=2" component=main
+stdlog: Connection: dial tcp 127.0.0.1:9000: connect: connection refused
+stdlog: qan-api2 v2.41.0.
+time="2024-01-28T17:53:17.248+00:00" level=info msg="Log level: info."
+time="2024-01-28T17:53:17.248+00:00" level=info msg="DSN: clickhouse://127.0.0.1:9000?database=pmm&block_size=10000&pool_size=2" component=main
+stdlog: Connection: dial tcp 127.0.0.1:9000: connect: connection refused
+stdlog: qan-api2 v2.41.0.
+time="2024-01-28T17:53:45.089+00:00" level=info msg="Log level: info."
+time="2024-01-28T17:53:45.089+00:00" level=info msg="DSN: clickhouse://127.0.0.1:9000?database=pmm&block_size=10000&pool_size=2" component=main
+stdlog: Connection: dial tcp 127.0.0.1:9000: connect: connection refused
+```
+
+上面三个进程的日志重要信息如下：
+
+- 权限不足：filesystem error: in canonical: Operation not permitted ["/usr/share/zoneinfo/"]
+
+- 连接失败：stdlog: Connection: dial tcp 127.0.0.1:9000: connect: connection refused
+
+**5）解决办法**
+
+先看看第一个权限不足的问题，看到一篇文章遇到了类似问题，文章地址为[https://github.com/ClickHouse/ClickHouse/issues/48296](https://github.com/ClickHouse/ClickHouse/issues/48296)
+
+解决办法是：
+
+![Alt text](image-3.png)
+
+这个问题可能是因为版本的限制，一开始安装使用的`docker run`命令没有加--privileged参数。
+
+**删除容器，重新创建：**
+
+```bash
+[root@zabbix6 _data]# docker stop 7044dd8d6aca
+[root@zabbix6 _data]# docker rm 7044dd8d6aca
+[root@zabbix6 _data]# 
+docker run --privileged --detach --restart always \
+--publish 443:443 \
+--volumes-from pmm-data \
+--name pmm-server \
+percona/pmm-server:2
+
+[root@zabbix6 ~]# docker ps
+CONTAINER ID   IMAGE                  COMMAND                CREATED          STATUS                    PORTS                          NAMES
+c99a87c5718b   percona/pmm-server:2   "/opt/entrypoint.sh"   18 minutes ago   Up 18 minutes (healthy)   80/tcp, 0.0.0.0:443->443/tcp   pmm-server
+```
+
+解决！！
 
 # 3 PMM Client
 
@@ -531,200 +731,27 @@ MySQL                  mysql001-mysql       192.168.131.99:3306 /service_id/60b9
 
 ![Alt text](image-12.png)
 
-# PMM Server安装问题
+# 5 QAN
 
-**1）列出当前运行的 Docker 容器**
+QAN全称Query Analytics，此仪表板显示查询是如何执行的，以及它们在哪里花费时间。可以帮助我们分析一段时间内的数据库查询，可用于优化数据库性能，快速找到并解决问题的根源。
 
-docker run启动pmm-server容器后查看：
+在工作中可能看得最多的就是这块面板了，因为影响数据库性能百分之九十的原因是查询问题，也就是慢SQL。有时候一个慢SQL就能拖垮整个库，进而影响业务系统的正常运转。
 
-![Alt text](image-2.png)
+因此，应该好好利用Query Analytics这个功能。
 
-状态显示`unhealthy`，正常来说应该是`healthy`，这显然有问题。
+Query Analytics面板如下：
 
-**2）查看pmm-server容器日志**
+![Alt text](image-13.png)
 
-```bash
-[root@zabbix6 ~]# docker logs 7044dd8d6aca > docker.log
-```
+**1）过滤**
 
-异常信息如下：
+左边栏的Filters可以按不同维度进行查询过滤，例如数据库、节点名、服务名等：
 
-```bash
-[root@zabbix6 ~]# vim docker.log
-2024-01-28 17:04:26,213 INFO spawned: 'clickhouse' with pid 283
-2024-01-28 17:04:26,383 INFO exited: clickhouse (exit status 232; not expected)
-2024-01-28 17:04:32,683 INFO spawned: 'grafana' with pid 300
-2024-01-28 17:04:32,684 INFO spawned: 'qan-api2' with pid 301
-2024-01-28 17:04:32,690 INFO exited: grafana (exit status 2; not expected)
-2024-01-28 17:04:32,691 INFO exited: qan-api2 (exit status 1; not expected)
-```
+![Alt text](image-14.png)
 
-根据提示，大概的意思是clickhouse、grafana、qan-api2进程退出。
+**2）sql详情**
 
-**3）查看pmm-server容器进程**
+点击total列表里的sql，右下栏显示sql的详情，包括记录数、查询时间、锁表时间等指标：
 
-```bash
-[root@zabbix6 bin]# docker exec -it 7044dd8d6aca /bin/bash
-[root@7044dd8d6aca opt] # supervisorctl
-alertmanager                     RUNNING   pid 25, uptime 0:06:00
-clickhouse                       FATAL     Exited too quickly (process log may have details)
-dbaas-controller                 STOPPED   Not started
-grafana                          FATAL     Exited too quickly (process log may have details)
-nginx                            RUNNING   pid 22, uptime 0:06:00
-pmm-agent                        RUNNING   pid 114, uptime 0:05:57
-pmm-managed                      RUNNING   pid 37, uptime 0:06:00
-pmm-update-perform               STOPPED   Not started
-pmm-update-perform-init          FATAL     Exited too quickly (process log may have details)
-postgresql                       RUNNING   pid 13, uptime 0:06:00
-prometheus                       STOPPED   Not started
-qan-api2                         BACKOFF   Exited too quickly (process log may have details)
-victoriametrics                  RUNNING   pid 23, uptime 0:06:00
-vmalert                          RUNNING   pid 24, uptime 0:06:00
-vmproxy                          RUNNING   pid 32, uptime 0:06:00
-```
+![Alt text](image-15.png)
 
-印证了刚刚的推论，一大堆进程都没有运行，看起来问题很多啊。
-
-**4）查看具体进程日志**
-
-优先看看这几个进程clickhouse、grafana、qan-api2日志。
-
-**clickhouse:**
-
-```bash
-supervisor> tail clickhouse
-. main @ 0x0000000007111f8f in /usr/bin/clickhouse
-1.  ? @ 0x00007f5ed0cd1eb0 in ?
-2.  ? @ 0x00007f5ed0cd1f60 in ?
-3.  _start @ 0x000000000634716e in /usr/bin/clickhouse
- (version 23.8.2.7 (official build))
-Processing configuration file '/etc/clickhouse-server/config.xml'.
-Logging information to /srv/logs/clickhouse-server.log
-Poco::Exception. Code: 1000, e.code() = 0, Exception: Could not determine local time zone: filesystem error: in canonical: Operation not permitted ["/usr/share/zoneinfo/"] [""], Stack trace (when copying this message, always include the lines below):
-
-1. DateLUT::DateLUT() @ 0x000000000c5f13d8 in /usr/bin/clickhouse
-2. OwnPatternFormatter::OwnPatternFormatter(bool) @ 0x000000000c8e224e in /usr/bin/clickhouse
-3. Loggers::buildLoggers(Poco::Util::AbstractConfiguration&, Poco::Logger&, String const&) @ 0x000000000c8d846d in /usr/bin/clickhouse
-4. BaseDaemon::initialize(Poco::Util::Application&) @ 0x000000000c8b6082 in /usr/bin/clickhouse
-5. DB::Server::initialize(Poco::Util::Application&) @ 0x000000000c68bef8 in /usr/bin/clickhouse
-6. Poco::Util::Application::run() @ 0x0000000015b1e6fa in /usr/bin/clickhouse
-7. DB::Server::run() @ 0x000000000c68bcbe in /usr/bin/clickhouse
-8. Poco::Util::ServerApplication::run(int, char**) @ 0x0000000015b2d819 in /usr/bin/clickhouse
-9. mainEntryClickHouseServer(int, char**) @ 0x000000000c688a8a in /usr/bin/clickhouse
-10. main @ 0x0000000007111f8f in /usr/bin/clickhouse
-11. ? @ 0x00007f85da433eb0 in ?
-12. ? @ 0x00007f85da433f60 in ?
-13. _start @ 0x000000000634716e in /usr/bin/clickhouse
- (version 23.8.2.7 (official build))
-```
-
-**grafana:**
-
-```bash
-supervisor> tail grafana
-000
-0x00007ffdba484180:  0x0000000000000001  0xc1999515713efe00
-0x00007ffdba484190:  0x00007ffdba4843a0  0x00000000004324db <runtime.(*pageAlloc).allocRange+0x000000000000021b>
-0x00007ffdba4841a0:  0x0000000005d202e8  0x0000000002030000 <github.com/grafana/grafana/pkg/services/libraryelements.(*LibraryElementService).getLibraryElementByUid+0x0000000000000240>
-0x00007ffdba4841b0:  0x0000000000000004  0x0000000000000000
-0x00007ffdba4841c0:  0x0000000000000002  0xc1999515713efe00
-0x00007ffdba4841d0:  0x00007efd709d6740  0x0000000000000006
-0x00007ffdba4841e0:  0x0000000000000001  0x00007ffdba484510
-0x00007ffdba4841f0:  0x0000000005cf3920  0x00007efd70a2dd06
-0x00007ffdba484200:  0x00007efd70bd4e90  0x00007efd70a017f3
-0x00007ffdba484210:  0x0000000000000020  0x0000000000000000
-0x00007ffdba484220:  0x000000000361013e  0x0000000000000006
-0x00007ffdba484230:  0x0000000005eb988a  0x0000000000000000
-
-goroutine 1 [running]:
-runtime.systemstack_switch()
-        /usr/local/go/src/runtime/asm_amd64.s:474 +0x8 fp=0xc000072740 sp=0xc000072730 pc=0x4737c8
-runtime.main()
-        /usr/local/go/src/runtime/proc.go:169 +0x6d fp=0xc0000727e0 sp=0xc000072740 pc=0x441aed
-runtime.goexit()
-        /usr/local/go/src/runtime/asm_amd64.s:1650 +0x1 fp=0xc0000727e8 sp=0xc0000727e0 pc=0x4757a1
-
-rax    0x0
-rbx    0x7efd709d6740
-rcx    0x7efd70a7a58c
-rdx    0x6
-rdi    0x187
-rsi    0x187
-rbp    0x187
-rsp    0x7ffdba484140
-r8     0x7ffdba484210
-r9     0x7efd70b8a4e0
-r10    0x8
-r11    0x246
-r12    0x6
-r13    0x7ffdba484510
-r14    0x5cf3920
-r15    0x6
-rip    0x7efd70a7a58c
-rflags 0x246
-cs     0x33
-fs     0x0
-gs     0x0
-```
-
-**qan-api2:**
-
-```bash
-supervisor> tail qan-api2
-: connect: connection refused
-stdlog: qan-api2 v2.41.0.
-time="2024-01-28T17:52:00.514+00:00" level=info msg="Log level: info."
-time="2024-01-28T17:52:00.514+00:00" level=info msg="DSN: clickhouse://127.0.0.1:9000?database=pmm&block_size=10000&pool_size=2" component=main
-stdlog: Connection: dial tcp 127.0.0.1:9000: connect: connection refused
-stdlog: qan-api2 v2.41.0.
-time="2024-01-28T17:52:25.252+00:00" level=info msg="Log level: info."
-time="2024-01-28T17:52:25.252+00:00" level=info msg="DSN: clickhouse://127.0.0.1:9000?database=pmm&block_size=10000&pool_size=2" component=main
-stdlog: Connection: dial tcp 127.0.0.1:9000: connect: connection refused
-stdlog: qan-api2 v2.41.0.
-time="2024-01-28T17:52:50.486+00:00" level=info msg="Log level: info."
-time="2024-01-28T17:52:50.486+00:00" level=info msg="DSN: clickhouse://127.0.0.1:9000?database=pmm&block_size=10000&pool_size=2" component=main
-stdlog: Connection: dial tcp 127.0.0.1:9000: connect: connection refused
-stdlog: qan-api2 v2.41.0.
-time="2024-01-28T17:53:17.248+00:00" level=info msg="Log level: info."
-time="2024-01-28T17:53:17.248+00:00" level=info msg="DSN: clickhouse://127.0.0.1:9000?database=pmm&block_size=10000&pool_size=2" component=main
-stdlog: Connection: dial tcp 127.0.0.1:9000: connect: connection refused
-stdlog: qan-api2 v2.41.0.
-time="2024-01-28T17:53:45.089+00:00" level=info msg="Log level: info."
-time="2024-01-28T17:53:45.089+00:00" level=info msg="DSN: clickhouse://127.0.0.1:9000?database=pmm&block_size=10000&pool_size=2" component=main
-stdlog: Connection: dial tcp 127.0.0.1:9000: connect: connection refused
-```
-
-上面三个进程的日志重要信息如下：
-
-- 权限不足：filesystem error: in canonical: Operation not permitted ["/usr/share/zoneinfo/"]
-
-- 连接失败：stdlog: Connection: dial tcp 127.0.0.1:9000: connect: connection refused
-
-**5）解决办法**
-
-先看看第一个权限不足的问题，看到一篇文章遇到了类似问题，文章地址为[https://github.com/ClickHouse/ClickHouse/issues/48296](https://github.com/ClickHouse/ClickHouse/issues/48296)
-
-解决办法是：
-
-![Alt text](image-3.png)
-
-这个问题可能是因为版本的限制，一开始安装使用的`docker run`命令没有加--privileged参数。
-
-**删除容器，重新创建：**
-
-```bash
-[root@zabbix6 _data]# docker stop 7044dd8d6aca
-[root@zabbix6 _data]# docker rm 7044dd8d6aca
-[root@zabbix6 _data]# 
-docker run --privileged --detach --restart always \
---publish 443:443 \
---volumes-from pmm-data \
---name pmm-server \
-percona/pmm-server:2
-
-[root@zabbix6 ~]# docker ps
-CONTAINER ID   IMAGE                  COMMAND                CREATED          STATUS                    PORTS                          NAMES
-c99a87c5718b   percona/pmm-server:2   "/opt/entrypoint.sh"   18 minutes ago   Up 18 minutes (healthy)   80/tcp, 0.0.0.0:443->443/tcp   pmm-server
-```
-
-解决！！
