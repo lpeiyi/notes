@@ -2686,15 +2686,135 @@ from (
 
 # 14 组复制
 
-# 15 innodb cluster
+## 14.1 组复制的背景
+
+## 14.2 组复制的搭建
+
+### 14.2.1 部署规划
+
+| 主机名 | ip地址 | 角色 | 版本号 | 服务器版本 |
+| - | - | - | - | - |
+| node1 | 192.168.131.10 | primary | MySQL8.0.27 | RHEL7.9 |
+| node2 | 192.168.131.20 | secondary | MySQL8.0.27 | RHEL7.9 |
+| node3 | 192.168.131.30 | secondary | MySQL8.0.27 | RHEL7.9 |
+
+### 14.2.2 安装环境准备
+
+```bash
+[root@node1 ~]# iptables -F
+[root@node1 ~]# setenforce 0
+setenforce: SELinux is disabled
+[root@node1 ~]# vim /etc/sysconfig/selinux
+SELINUX=disabled
+```
+
+### 14.2.3 配置组复制实例
+
+```bash
+[root@node1 ~]# cd /usr/local/
+[root@node1 local]# groupadd mysql
+[root@node1 local]# useradd -g mysql mysql
+[root@node1 local]# passwd mysql
+Changing password for user mysql.
+New password:
+BAD PASSWORD: The password is shorter than 8 characters
+Retype new password:
+passwd: all authentication tokens updated successfully.
+[root@node1 local]# tar -xvf mysql-8.0.27-linux-glibc2.12-x86_64.tar.xz
+[root@node1 local]# ln -s mysql-8.0.27-linux-glibc2.12-x86_64 mysql
+```
+
+```bash
+[root@node1 local]# vim /etc/my.cnf
+```
+
+node1:
+
+```bash
+[mysqld]
+#Server Settings
+
+basedir=/usr/local/mysql
+datadir=/data/mysql/3306/data
+user=mysql
+port=3306
+socket=/data/mysql/3306/data/mysql.sock
+log_error=/data/mysql/3306/data/mysqld.err
+log_timestamps=system
+skip_name_resolve=TRUE
+report_host="192.168.131.10"
+disabled_storage_engines="MyISAM,BLACKHOLE,FEDERATED,ARCHIVE,MEMORY"
+sql_require_primary_key=ON
+
+#Replication Framework
+
+server_id=1
+gtid_mode=ON
+enforce_gtid_consistency=ON
+log_bin=binlog
+log_slave_updates=ON
+binlog_format=ROW
+master_info_repository=TABLE
+relay_log_info_repository=TABLE
+transaction_write_set_extraction=XXHASH64
+super_read_only=ON
+binlog_transaction_dependency_tracking=WRITESET
+
+#Group Replication Settings
+
+plugin_load_add='group_replication.so'
+loose_group_replication_group_name="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+loose_group_replication_start_on_boot=off
+loose_group_replication_local_address= "192.168.131.10:33061"
+loose_group_replication_group_seeds= "192.168.131.10:33061,192.168.131.20:33061,192.168.131.30:33061"
+loose_group_replication_bootstrap_group=off
+loose_group_replication_recovery_get_public_key=ON
+
+#Multi-Source Replication Settings
+
+replica_parallel_workers=4
+replica_parallel_type=LOGICAL_CLOCK
+slave_preserve_commit_order=1
+
+[client]
+socket=/data/mysql/3306/data/mysql.sock
+```
+
+基于node1修改：
+
+node2
+```bash
+report_host="192.168.131.20"
+server_id=2
+loose_group_replication_local_address= "192.168.131.20:33061"
+```
+
+node3
+```bash
+report_host="192.168.131.30"
+server_id=3
+loose_group_replication_local_address= "192.168.131.30:33061"
+```
+
+```bash
+[root@node1 local]# mkdir -p /data/mysql/3306/data
+```
+
+```bash
+/usr/local/mysql/bin/mysqld --defaults-file=/etc/my.cnf --initialize-insecure
+```
+
+# 15 InnoDB Cluster
 
 # 16 监控
 
-## 16.1 基于zabbix的pmp解决方案
+## 16.1 PMP
 
-[percona-zabbix-templates](/zabbix/percona-zabbix-templates.md)
+[PMP](/zabbix/percona-zabbix-templates.md)
 
-## 16.2 基于
+## 16.2 PMM
+
+[PMM](/Database-Administrator/MySQL/monitoring/PMM/pmm.md)
 
 ## 16.3 MySQL常用监控指标
 

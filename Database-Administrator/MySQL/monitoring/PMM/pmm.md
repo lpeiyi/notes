@@ -14,7 +14,7 @@ PMM针对操作系统的部分也提供了硬盘、网络、CPU和RAM的监控�
 
 架构图如下：
 
-![Alt text](image.png)
+![Alt text](image/image.png)
 
 更详细的介绍请参考官方文档：https://docs.percona.com/percona-monitoring-and-management/index.html
 
@@ -22,7 +22,7 @@ PMM针对操作系统的部分也提供了硬盘、网络、CPU和RAM的监控�
 
 官方提供了多种安装方式，优缺点如下：
 
-![Alt text](image-1.png)
+![Alt text](image/image-1.png)
 
 最常用的方式是Docker。
 
@@ -132,13 +132,13 @@ c99a87c5718b   percona/pmm-server:2   "/opt/entrypoint.sh"   18 minutes ago   Up
 
 访问 https://ip:443 在web浏览器中查看PMM用户界面，ip为PMM Server的地址。
 
-![Alt text](image-4.png)
+![Alt text](image/image-4.png)
 
 默认的用户名和密码都是admin，第一次登录会提示修改密码。
 
 首页如下：
 
-![Alt text](image-5.png)
+![Alt text](image/image-5.png)
 
 # 2.2 PMM Server安装问题
 
@@ -146,7 +146,7 @@ c99a87c5718b   percona/pmm-server:2   "/opt/entrypoint.sh"   18 minutes ago   Up
 
 docker run启动pmm-server容器后查看：
 
-![Alt text](image-2.png)
+![Alt text](image/image-2.png)
 
 状态显示`unhealthy`，正常来说应该是`healthy`，这显然有问题。
 
@@ -315,7 +315,7 @@ stdlog: Connection: dial tcp 127.0.0.1:9000: connect: connection refused
 
 解决办法是：
 
-![Alt text](image-3.png)
+![Alt text](image/image-3.png)
 
 这个问题可能是因为版本的限制，一开始安装使用的`docker run`命令没有加--privileged参数。
 
@@ -353,7 +353,7 @@ PMM Client安装的方法有两种：
 
 最常用的是使用二进制包进行安装，安装包在percona的首页下载：
 
-![Alt text](image-6.png)
+![Alt text](image/image-6.png)
 
 下载哪个版本看个人喜好，推荐下载最新版本。[https://www.percona.com/downloads](https://www.percona.com/downloads)
 
@@ -547,13 +547,13 @@ Agents:
 
 **2）查看监控数据**
 
-![Alt text](image-7.png)
+![Alt text](image/image-7.png)
 
 Node Names为主机名hostname。
 
 如果想观察操作系统的详细监控数据，在以下面板查看：
 
-![Alt text](image-8.png)
+![Alt text](image/image-8.png)
 
 # 4 设置PMM来监视MySQ
 
@@ -628,11 +628,11 @@ mysql> show grants for pmm@192.168.131.99;
 
 慢速查询日志和Performance_Schema指标源各自的优缺点，如下：
 
-![Alt text](image-9.png)
+![Alt text](image/image-9.png)
 
 数据库不同版本的数据源建议：
 
-![Alt text](image-10.png)
+![Alt text](image/image-10.png)
 
 
 **1.慢查询日志源的设置方法**
@@ -714,7 +714,7 @@ Table statistics collection enabled (the limit is 1000, the actual table count i
 
 PMM用户界面查看，依次点击`⚙`→`Configuration`→`Inventory`：
 
-![Alt text](image-11.png)
+![Alt text](image/image-11.png)
 
 
 也可在命令行检查：
@@ -729,7 +729,7 @@ MySQL                  mysql001-mysql       192.168.131.99:3306 /service_id/60b9
 
 **5）查看MySQL实例监控页面**
 
-![Alt text](image-12.png)
+![Alt text](image/image-12.png)
 
 # 5 QAN
 
@@ -741,17 +741,17 @@ QAN全称Query Analytics，此仪表板显示查询是如何执行的，以及�
 
 Query Analytics面板如下：
 
-![Alt text](image-13.png)
+![Alt text](image/image-13.png)
 
 **1）过滤**
 
 左边栏的Filters可以按不同维度进行查询过滤，例如数据库、节点名、服务名等：
 
-![Alt text](image-14.png)
+![Alt text](image/image-14.png)
 
 **2）sql详情**
 
 点击total列表里的sql，右下栏显示sql的详情，包括记录数、查询时间、锁表时间等指标：
 
-![Alt text](image-15.png)
+![Alt text](image/image-15.png)
 
