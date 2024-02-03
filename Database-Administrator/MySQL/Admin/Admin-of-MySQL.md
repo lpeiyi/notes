@@ -2686,7 +2686,115 @@ from (
 
 # 14 组复制
 
-## 14.1 组复制的背景
+## 14.1 组复制的原理介绍
+
+MySQL Group Replication（MGR）是MySQL数据库的一种高可用性解决方案，它提供了一个用于MySQL服务器的多主复制插件。它允许一组MySQL服务器一起工作，形成一个单一的、高可用性的、容错的复制组。组中的每个服务器都可以充当主服务器和从服务器，实现了分布式、多主复制。
+
+MySQL Group Replication背后的设计和实现基于Paxos算法。Paxos是一种分布式一致性算法，用于确保在分布式系统中的节点之间达成一致的共识。在MySQL Group Replication中，Paxos算法的思想被用来协调和保持组中成员之间的一致性状态。
+
+关于MySQL Group Replication的一些关键点如下：
+
+1. **同步复制：** Group Replication的一个显著特点是支持同步复制。当在一个服务器上提交事务时，它会立即被复制到组中的所有其他服务器。这确保了在任何给定时间点，所有成员都具有相同的数据集。
+
+2. **自动组成员管理：** Group Replication自动管理组的成员资格。当向组中添加新服务器时，它会自动与现有成员同步。如果服务器失败或离开组，剩余的服务器会自动调整以适应变化，确保持续运行。
+
+3. **多主复制：** Group Replication组中的每个服务器都可以接受读和写事务。这允许分布式工作负载，并提供了改进的读可伸缩性。
+
+4. **一致性：** Group Replication通过使用分布式认证过程确保所有成员的一致性。这意味着在提交事务之前，它会由组中大多数成员认证，确保数据保持一致。
+
+5. **容错性：** 该组设计为容错。如果一个或多个服务器失败，剩余的服务器可以继续提供读和写请求。当故障的服务器恢复时，它会自动重新与组同步。
+
+6. **冲突解决：** 在存在冲突事务的情况下，Group Replication使用投票机制来确定冲突事务的顺序。这有助于保持组内的一致状态。
+
+7. **与复制的兼容性：** Group Replication与传统的MySQL异步复制兼容。这意味着您可以在同一环境中使用一些使用传统复制的服务器，而另一些使用Group Replication。
+
+要实施Group Replication，通常需要配置MySQL实例，设置必要的安全凭据，并启动组。对于对高可用性、容错性和一致性要求至关重要的场景，它是一个强大的解决方案。
+
+### 14.1.1 复制技术
+
+#### 14.1.1.1 异步复制
+
+**1）异步复制的原理图如下：**
+
+![alt text](image-4.png)
+
+**2）异步复制的大致过程：**
+
+1. 主库执行SQL语句：存储引擎执行SQL操作；
+2. 主库写binlog：主库记录执行的所有数据库变更操作，将这些操作以二进制格式保存在binlog中；
+3. 主库传送binlog事件：主库写binlog后，把 binlog 里面的内容传给从库的中继日志（relay log）中；
+4. 主库事务返回客户端：主库写binlog后，可直接在引擎层提交事务，将事务返回客户端。
+
+步骤3和步骤4实是同步进行的。
+
+**3）异步复制的隐患：**
+
+由于步骤3和步骤4实是同步进行的，也就是说主库写binlog后，直接提交事务的同时，向从库发送binlog事件。当主库出现故障，复制中断，原来主库上可能有一部分已经完成提交的事务还没来得及发送到从库，当从库切换为主库后，就会发现主库之前写入的数据丢失了，无法保证主从数据一致性。
+
+#### 14.1.1.2 半同步复制
+
+**1）半同步复制的原理图如下：**
+
+![alt text](image-5.png)
+
+**2）半同步复制的大致过程：**
+
+1. 主库执行SQL语句：存储引擎执行SQL操作；
+2. 主库写binlog：主库记录执行的所有数据库变更操作，将这些操作以二进制格式保存在binlog中；
+3. 主库传送binlog事件：主库写binlog后，把 binlog 里面的内容传给从库的中继日志（relay log）中；
+4. 从库发送 ACK：从库收到binlog后，发送给主库一个 ACK，表示收到了；
+5. 主库事务返回客户端：主库收到从库的ACK信号后，在引擎层提交事务，将事务返回客户端。
+
+跟异步复制相比，半同步复制保证了事务在返回客户端后，对应的binlog事件从库确认收到了，已经写入到relay log中。
+
+**3）半同步复制的隐患：**
+
+当事务在写入binlog之后，写入relay log之前，主库宕机了，主从切换后，从库看到的数据有可能跟写入binlog的会话数据不一致。并且，当主库恢复后，由于宕机前，事务已经写入binlog，在实例恢复过程中会从新将这部分事务提交，这就导致了主从数据不一致。
+
+#### 14.1.1.3 组复制
+
+**1）组复制的原理图如下：**
+
+![alt text](image-6.png)
+
+**2）组复制与传统复制的区别：**
+
+组复制引入了两个新的机制，Consensus和Certify，这两个机制共同确保了 Group Replication 中的数据一致性和高可用性。 Consensus 用于在组内达成一致的决策，而 Certify 用于确保提交的事务得到足够多的认证。
+
+**Consensus（共识）**，在组复制中，Consensus 指的是通过 Paxos 算法，确保组内成员就状态协商、Primary 节点选举、事务提交等关键决策达成一致的过程。Consensus 机制用于确保组内的所有成员就某个问题或决策达成一致意见。确保消息的全局有序和消息被半数以上的成员确认接受。
+
+**Certify（认证）**，是组复制的一种机制，用于确保事务在提交时，组内的大多数成员都已经接收并执行了这个事务。在提交事务时，Primary 节点会等待至少大多数成员的确认，确保事务得到了足够多的认证。简单来说，就是确保所有成员对于同一个事务要么都认证，要么全都认证失败，事务得到了足够多的认证后才会提交。
+
+**3）组复制的工作机制：**
+
+组复制由多个成员组成，组中每个成员可以独立执行事务（多主模式）。但是，所有读写事务只有在获得组批准后才会提交（只读事务可以不通过组内协调就能提交）。
+
+Primary节点负责接收事务提交，并将这些事务广播给组内的其他成员，组中的所有成员要么接收事务，要么都不接收。并且都以相同的顺序接收同一组事务，并为事务建立一个全局总顺序。
+
+在组复制中，并发执行的事务的冲突检测和解决与死锁处理类似，确保对同一行数据的并发更新不会导致数据不一致或冲突。如果在不同节点上的两个并发事务更新了相同的行，系统会根据一致性协议进行解决。通过 Paxos 算法确保对同一行数据的并发更新不会导致数据不一致。排序靠前的提交，排序靠后的事务可能需要回滚。
+
+### 14.1.2 组复制使用场景
+
+MySQL组复制提供了一个高可用性、高弹性、可靠的MySQL服务。通过将系统状态复制到一组服务器，组复制使您能够创建具有冗余的容错系统，组内的成员之间可以同时进行读写操作，并保持数据的一致性。即使一些组成员出现故障，只要不是全部或大多数，系统仍然可用。根据故障成员的数量，组的性能或可伸缩性可能会下降，但它仍然可用，**保证了数据库服务的持续可用性**。
+
+以下是一些MySQL Group Replication的使用场景：
+
+1. **高可用性：** Group Replication提供了高可用性的数据库解决方案。由于组内的每个成员都可以成为Primary节点，当某个节点发生故障时，系统可以通过重新选举来选择新的Primary节点，保证数据库服务的持续可用性。
+   ！！！需要注意的是，尽管数据库服务是可用的，但在组成员意外退出的情况下，必须将连接到它的那些客户端重定向到故障转移到另一个组成员。
+
+2. **读写分离：** 组内的每个成员都可以接收读和写操作，这使得可以在不同节点上进行读写操作，从而分担数据库负载，提高整体系统的读写性能。
+
+3. **弹性伸缩：** 支持在运行时动态添加或移除节点，以适应业务负载的变化。这种弹性伸缩的能力使得数据库系统更加灵活和可调整。
+
+4. **故障转移：** 在发生故障时，Group Replication可以自动进行故障转移。系统会重新选举新的Primary节点，确保写入操作的连续性。
+
+5. **实时数据分析：** 在需要进行实时数据分析的场景中，可以利用Group Replication在多个节点上执行读操作，提高数据分析的性能。
+
+6. **维护和升级：** 在维护数据库或进行升级时，可以在组内的一个节点上执行维护操作，而其他节点仍然可以提供服务。维护完成后，再将节点重新加入组。
+
+### 14.1.3 多主模式和单主模式
+
+
 
 ## 14.2 组复制的搭建
 
@@ -2801,8 +2909,181 @@ loose_group_replication_local_address= "192.168.131.30:33061"
 ```
 
 ```bash
-/usr/local/mysql/bin/mysqld --defaults-file=/etc/my.cnf --initialize-insecure
+[root@node1 ~]# vim /etc/profile
+#添加
+export MYSQL_HOME=/usr/local/mysql
+export PATH=$PATH:$MYSQL_HOME/bin
+
+[root@node1 ~]# source /etc/profile
 ```
+
+```bash
+[root@node1 local]# /usr/local/mysql/bin/mysqld --defaults-file=/etc/my.cnf --initialize-insecure
+```
+
+```bash
+[root@node1 ~]# vim /usr/lib/systemd/system/mysqld.service
+#添加
+[Unit]
+Description=MySQL Server
+Documentation=man:mysqld(8)
+Documentation=http://dev.mysql.com/doc/refman/en/using-systemd.html
+After=network-online.target
+After=syslog.target
+
+[Install]
+WantedBy=multi-user.target
+
+[Service]
+User=mysql
+Group=mysql
+
+Type=notify
+
+# Disable service start and stop timeout logic of systemd for mysqld service.
+TimeoutSec=0
+
+# Start main service
+ExecStart=/usr/local/mysql/bin/mysqld --defaults-file=/etc/my.cnf $MYSQLD_OPTS
+
+# Use this to switch malloc implementation
+EnvironmentFile=-/etc/sysconfig/mysql
+
+# Sets open_files_limit
+LimitNOFILE = 65536
+
+Restart=on-failure
+
+RestartPreventExitStatus=1
+
+# Set enviroment variable MYSQLD_PARENT_PID. This is required for restart.
+Environment=MYSQLD_PARENT_PID=1
+
+PrivateTmp=false
+```
+
+```bash
+[root@node1 ~]# systemctl daemon-reload
+[root@node1 bin]# systemctl start mysqld
+```
+
+### 14.2.4 启动组复制
+
+**1）查看插件是否加载成功**
+
+```bash
+mysql> select * from information_schema.plugins where plugin_name = 'group_replication'\G
+*************************** 1. row ***************************
+           PLUGIN_NAME: group_replication
+        PLUGIN_VERSION: 1.1
+         PLUGIN_STATUS: ACTIVE
+           PLUGIN_TYPE: GROUP REPLICATION
+   PLUGIN_TYPE_VERSION: 1.4
+        PLUGIN_LIBRARY: group_replication.so
+PLUGIN_LIBRARY_VERSION: 1.10
+         PLUGIN_AUTHOR: Oracle Corporation
+    PLUGIN_DESCRIPTION: Group Replication (1.1.0)
+        PLUGIN_LICENSE: GPL
+           LOAD_OPTION: ON
+1 row in set (0.00 sec)
+```
+
+**2）初始化组复制**
+
+只在node1执行：
+
+```bash
+mysql> set global group_replication_bootstrap_group=on;
+mysql> start group_replication;
+mysql> set global group_replication_bootstrap_group=off;
+```
+
+```bash
+mysql> select * from performance_schema.replication_group_members;
++---------------------------+--------------------------------------+----------------+-------------+--------------+-------------+----------------+----------------------------+
+| CHANNEL_NAME              | MEMBER_ID                            | MEMBER_HOST    | MEMBER_PORT | MEMBER_STATE | MEMBER_ROLE | MEMBER_VERSION | MEMBER_COMMUNICATION_STACK |
++---------------------------+--------------------------------------+----------------+-------------+--------------+-------------+----------------+----------------------------+
+| group_replication_applier | f40395ea-c132-11ee-9249-000c29c00092 | 192.168.131.10 |        3306 | ONLINE       | PRIMARY     | 8.0.27         | XCom                       |
++---------------------------+--------------------------------------+----------------+-------------+--------------+-------------+----------------+----------------------------+
+```
+
+**3）创建复制用户**
+
+只在**node1**执行：
+
+```sql
+mysql>
+create user rpl_user@'%' identified by 'rpl_123';
+grant replication slave on *.* to rpl_user@'%';
+grant connection_admin on *.* to rpl_user@'%';
+grant backup_admin on *.* to rpl_user@'%';
+grant group_replication_stream on *.* to rpl_user@'%';
+```
+
+**注意：** 千万别在从节点上执行`flush privileges`，执行后会写入从节点的binlog，造成与组复制的事务不一致，导致节点添加失败，报错信息如下：
+
+```bash
+2024-02-03T00:33:18.335943+08:00 0 [ERROR] [MY-011526] [Repl] Plugin group_replication reported: 'This member has more executed transactions than those present in the group. Local transactions: 13fc049e-c133-11ee-a377-000c29df1f85:1 > Group transactions: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa:1-10'
+2024-02-03T00:33:18.336062+08:00 0 [ERROR] [MY-011522] [Repl] Plugin group_replication reported: 'The member contains transactions not present in the group. The member will now exit the group.'
+```
+
+解决办法有两个：
+
+1. 最保险的办法是重建这个从库；
+2. 也可以在**主库**上插入空会话，直到组复制事务大于从库的事务，最后再重新添加节点。
+   ```sql
+  SET GTID_NEXT='13fc049e-c133-11ee-a377-000c29df1f85:1';
+  BEGIN; COMMIT;
+  SET GTID_NEXT=AUTOMATIC;
+   ```
+
+配置恢复通道：
+
+```bash
+mysql> change master to master_user='rpl_user', master_password='rpl_123' for channel 'group_replication_recovery';
+```
+
+创建测试数据：
+
+```sql
+mysql> 
+create database mgrtest;
+create table mgrtest.demo(id int primary key,c1 varchar(10));
+insert into mgrtest.demo values(1,'a'),(2,'b');
+```
+
+### 14.2.5 添加节点
+
+在node2和node3上执行：
+
+```bash
+mysql> 
+change master to master_user='rpl_user', master_password='rpl_123' for channel 'group_replication_recovery';
+start group_replication;
+```
+
+查看集群节点信息：
+
+```sql
+mysql> select * from performance_schema.replication_group_members;
++---------------------------+--------------------------------------+----------------+-------------+--------------+-------------+----------------+----------------------------+
+| CHANNEL_NAME              | MEMBER_ID                            | MEMBER_HOST    | MEMBER_PORT | MEMBER_STATE | MEMBER_ROLE | MEMBER_VERSION | MEMBER_COMMUNICATION_STACK |
++---------------------------+--------------------------------------+----------------+-------------+--------------+-------------+----------------+----------------------------+
+| group_replication_applier | 13fc049e-c133-11ee-a377-000c29df1f85 | 192.168.131.20 |        3306 | ONLINE       | SECONDARY   | 8.0.27         | XCom                       |
+| group_replication_applier | 248563ac-c133-11ee-a387-000c29551477 | 192.168.131.30 |        3306 | ONLINE       | SECONDARY   | 8.0.27         | XCom                       |
+| group_replication_applier | f40395ea-c132-11ee-9249-000c29c00092 | 192.168.131.10 |        3306 | ONLINE       | PRIMARY     | 8.0.27         | XCom                       |
++---------------------------+--------------------------------------+----------------+-------------+--------------+-------------+----------------+----------------------------+
+
+
+mysql> select * from mgrtest.demo;
++----+------+
+| id | c1   |
++----+------+
+|  1 | a    |
+|  2 | b    |
++----+------+
+```
+
 
 # 15 InnoDB Cluster
 
