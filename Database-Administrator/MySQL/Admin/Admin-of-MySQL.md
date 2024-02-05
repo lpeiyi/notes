@@ -2879,10 +2879,22 @@ MySQL8.0引入了对原子数据定义语言（DDL）语句的支持，其中完
 | node2 | 192.168.131.20 | secondary | MySQL8.0.27 | RHEL7.9 |
 | node3 | 192.168.131.30 | secondary | MySQL8.0.27 | RHEL7.9 |
 
-### 14.2.2 安装环境准备
+### 14.2.2 准备安装环境
+
+准备安装环境环节三个节点node1、node2和node3都需要执行。
+
+**1）关闭防火墙**
 
 ```bash
+[root@node1 ~]# systemctl stop firewalld
+[root@node1 ~]# systemctl disable firewalld
+#或者
 [root@node1 ~]# iptables -F
+```
+
+**2）关闭selinux**
+
+```bash
 [root@node1 ~]# setenforce 0
 setenforce: SELinux is disabled
 [root@node1 ~]# vim /etc/sysconfig/selinux
@@ -2891,25 +2903,22 @@ SELINUX=disabled
 
 ### 14.2.3 配置组复制实例
 
+配置组复制实例环节三个节点node1、node2和node3都需要执行。
+
+#### 14.2.3.1 解压二进制包并创建软连接
+
 ```bash
-[root@node1 ~]# cd /usr/local/
-[root@node1 local]# groupadd mysql
-[root@node1 local]# useradd -g mysql mysql
-[root@node1 local]# passwd mysql
-Changing password for user mysql.
-New password:
-BAD PASSWORD: The password is shorter than 8 characters
-Retype new password:
-passwd: all authentication tokens updated successfully.
 [root@node1 local]# tar -xvf mysql-8.0.27-linux-glibc2.12-x86_64.tar.xz
 [root@node1 local]# ln -s mysql-8.0.27-linux-glibc2.12-x86_64 mysql
 ```
+
+#### 14.2.3.2 编辑 node1 配置文件
 
 ```bash
 [root@node1 local]# vim /etc/my.cnf
 ```
 
-node1:
+添加如下配置：
 
 ```bash
 [mysqld]
@@ -2961,25 +2970,37 @@ slave_preserve_commit_order=1
 socket=/data/mysql/3306/data/mysql.sock
 ```
 
-基于node1修改：
+**注意，** 需要手动将下面三个系统变量修改为自己实际环境中的配置：`report_host`、`loose_group_replication_local_address`、`loose_group_replication_group_seeds`。
 
-node2
+系统变量`loose_group_replication_group_name`为集群名称，必须为一个唯一值，可以通过select uuid()生成。
+
+#### 14.2.3.3 编辑 node2 配置文件
+
+除了修改下面三个系统变量，其他和node1配置保持一致：
+
 ```bash
 report_host="192.168.131.20"
 server_id=2
 loose_group_replication_local_address= "192.168.131.20:33061"
 ```
 
-node3
+#### 14.2.3.4 编辑 node3 的配置文件
+
+除了修改下面三个系统变量，其他和node1配置保持一致：
+
 ```bash
 report_host="192.168.131.30"
 server_id=3
 loose_group_replication_local_address= "192.168.131.30:33061"
 ```
 
+#### 14.2.3.5 创建数据目录
+
 ```bash
 [root@node1 local]# mkdir -p /data/mysql/3306/data
 ```
+
+#### 14.2.3.6 添加环境变量
 
 ```bash
 [root@node1 ~]# vim /etc/profile
@@ -2990,13 +3011,37 @@ export PATH=$PATH:$MYSQL_HOME/bin
 [root@node1 ~]# source /etc/profile
 ```
 
+#### 14.2.3.7 添加mysql用户和组
+
+```bash
+[root@node1 ~]# cd /usr/local/
+[root@node1 local]# groupadd mysql
+[root@node1 local]# useradd -g mysql mysql
+[root@node1 local]# passwd mysql
+Changing password for user mysql.
+New password:
+BAD PASSWORD: The password is shorter than 8 characters
+Retype new password:
+passwd: all authentication tokens updated successfully.
+```
+
+#### 14.2.3.8 初始化实例
+
 ```bash
 [root@node1 local]# /usr/local/mysql/bin/mysqld --defaults-file=/etc/my.cnf --initialize-insecure
 ```
 
+#### 14.2.3.9 配置systemd系统管理mysql service
+
+**1）创建systemd服务配置文件**
+
 ```bash
 [root@node1 ~]# vim /usr/lib/systemd/system/mysqld.service
-#添加
+```
+
+添加:
+
+```bash
 [Unit]
 Description=MySQL Server
 Documentation=man:mysqld(8)
@@ -3035,6 +3080,8 @@ Environment=MYSQLD_PARENT_PID=1
 PrivateTmp=false
 ```
 
+**2）配置生效**
+
 ```bash
 [root@node1 ~]# systemctl daemon-reload
 [root@node1 bin]# systemctl start mysqld
@@ -3042,7 +3089,11 @@ PrivateTmp=false
 
 ### 14.2.4 启动组复制
 
-**1）查看插件是否加载成功**
+主要在node1上执行。
+
+#### 14.2.4.1 查看插件是否加载成功
+
+3个节点都确认一下组复制插件 `group_replication.so` 是否安装成功：
 
 ```bash
 mysql> select * from information_schema.plugins where plugin_name = 'group_replication'\G
@@ -3061,15 +3112,23 @@ PLUGIN_LIBRARY_VERSION: 1.10
 1 row in set (0.00 sec)
 ```
 
-**2）初始化组复制**
+#### 14.2.4.2 在node1上执行初始化组复制
 
-只在node1执行：
+首次启动一个组复制的过程称为引导（bootstrapping），使用 `group_replication_bootstrap_group` 系统变量来引导一个组复制。
+
+**需要注意的是，引导应该只由其中一个节点完成，且仅执行一次。**
+
+这就是为什么此变量没直接写死在配置文件中的原因。如果它保存在配置文件中，那么MySQl Service在重新启动时，服务器将自动引导具有相同名称的第二个组复制。这将导致两个具有相同名称的不同组。
+
+因此，为了安全地引导组复制，需要在启动组复制后再次关闭此系统变量：
 
 ```bash
 mysql> set global group_replication_bootstrap_group=on;
 mysql> start group_replication;
 mysql> set global group_replication_bootstrap_group=off;
 ```
+
+组启动成功后，通过视图 `performance_schema.replication_group_members`，查看组复制成员信息。此时可以看到组已经创建，并且有一个成员：
 
 ```bash
 mysql> select * from performance_schema.replication_group_members;
@@ -3080,9 +3139,9 @@ mysql> select * from performance_schema.replication_group_members;
 +---------------------------+--------------------------------------+----------------+-------------+--------------+-------------+----------------+----------------------------+
 ```
 
-**3）创建复制用户**
+#### 14.2.4.3 在引导成员node1上创建复制用户并赋权
 
-只在**node1**执行：
+创建的用户主要用于下一步配置恢复通道。
 
 ```sql
 mysql>
@@ -3093,7 +3152,7 @@ grant backup_admin on *.* to rpl_user@'%';
 grant group_replication_stream on *.* to rpl_user@'%';
 ```
 
-**注意：** 千万别在从节点上执行`flush privileges`，执行后会写入从节点的binlog，造成与组复制的事务不一致，导致节点添加失败，报错信息如下：
+**注意：** 千万别在从节点上执行`flush privileges`，执行后会写入从节点的binlog，造成与组复制的事务不一致，导致添加节点失败，报错信息如下：
 
 ```bash
 2024-02-03T00:33:18.335943+08:00 0 [ERROR] [MY-011526] [Repl] Plugin group_replication reported: 'This member has more executed transactions than those present in the group. Local transactions: 13fc049e-c133-11ee-a377-000c29df1f85:1 > Group transactions: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa:1-10'
@@ -3104,13 +3163,13 @@ grant group_replication_stream on *.* to rpl_user@'%';
 
 1. 最保险的办法是重建这个从库；
 2. 也可以在**主库**上插入空会话，直到组复制事务大于从库的事务，最后再重新添加节点。
-   ```sql
+  ```sql
   SET GTID_NEXT='13fc049e-c133-11ee-a377-000c29df1f85:1';
   BEGIN; COMMIT;
   SET GTID_NEXT=AUTOMATIC;
-   ```
+  ```
 
-配置恢复通道：
+#### 14.2.4.4 配置node1的恢复通道
 
 ```bash
 mysql> change master to master_user='rpl_user', master_password='rpl_123' for channel 'group_replication_recovery';
@@ -3125,17 +3184,23 @@ create table mgrtest.demo(id int primary key,c1 varchar(10));
 insert into mgrtest.demo values(1,'a'),(2,'b');
 ```
 
-### 14.2.5 添加节点
+### 14.2.5 添加节点node2和node3
 
-在node2和node3上执行：
+**在 node2 和 node3 上执行**
+
+**1）配置恢复通道**
 
 ```bash
-mysql> 
-change master to master_user='rpl_user', master_password='rpl_123' for channel 'group_replication_recovery';
-start group_replication;
+mysql> change master to master_user='rpl_user', master_password='rpl_123' for channel 'group_replication_recovery';
 ```
 
-查看集群节点信息：
+**2）启动组复制**
+
+```
+mysql> start group_replication;
+```
+
+**3）查看集群节点信息**
 
 ```sql
 mysql> select * from performance_schema.replication_group_members;
@@ -3146,8 +3211,11 @@ mysql> select * from performance_schema.replication_group_members;
 | group_replication_applier | 248563ac-c133-11ee-a387-000c29551477 | 192.168.131.30 |        3306 | ONLINE       | SECONDARY   | 8.0.27         | XCom                       |
 | group_replication_applier | f40395ea-c132-11ee-9249-000c29c00092 | 192.168.131.10 |        3306 | ONLINE       | PRIMARY     | 8.0.27         | XCom                       |
 +---------------------------+--------------------------------------+----------------+-------------+--------------+-------------+----------------+----------------------------+
+```
 
+**4）验证测试数据**
 
+```sql
 mysql> select * from mgrtest.demo;
 +----+------+
 | id | c1   |
