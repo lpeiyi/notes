@@ -2710,6 +2710,8 @@ MySQL Group Replication背后的设计和实现基于Paxos算法。Paxos是一�
 
 要实施Group Replication，通常需要配置MySQL实例，设置必要的安全凭据，并启动组。对于对高可用性、容错性和一致性要求至关重要的场景，它是一个强大的解决方案。
 
+官方参考文档：[https://dev.mysql.com/doc/refman/8.0/en/group-replication.html](https://dev.mysql.com/doc/refman/8.0/en/group-replication.html)
+
 ### 14.1.1 复制技术
 
 #### 14.1.1.1 异步复制
@@ -2792,11 +2794,24 @@ MySQL组复制提供了一个高可用性、高弹性、可靠的MySQL服务。�
 
 6. **维护和升级：** 在维护数据库或进行升级时，可以在组内的一个节点上执行维护操作，而其他节点仍然可以提供服务。维护完成后，再将节点重新加入组。
 
-### 14.1.3 多主模式和单主模式
+### 14.1.3 单主模式和多主模式
+
+组复制可以在单主模式或多主模式下运行。组的模式是组范围的配置设置，由系统变量`group_replication_single_primary_mode`指定，该变量在所有成员上必须相同。ON表示默认模式为单主模式，OFF表示多主模式。不可能将组的成员部署在不同的模式中，例如，一个成员配置为多主模式，而另一个成员配置为单主模式。
+
+对于单主和多主模式更改，在早期版本中，当组复制还在运行时，不能直接修改系统变量`group_replication_single_primary_mode`，需要先必须停止组复制，并在所有成员上更改此系统变量。然后，执行组的完整重新启动（由 group_replication_bootstrap_group=ON 的成员引导），以实施对新操作配置的更改。
+
+从MySQL8.0.13开始，允许在组复制还在运行时，使用`group_replication_switch_to_single_primary_mode()`和`group_replication_switch_to_multi_primary_mode()`函数去进行组复制模式的变更。
+
+#### 14.1.3.1 单主模式
 
 
 
-## 14.2 组复制的搭建
+#### 14.1.3.2 多主模式
+
+
+
+
+## 14.2 组复制的搭建（单主）
 
 ### 14.2.1 部署规划
 
