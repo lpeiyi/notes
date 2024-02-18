@@ -3402,6 +3402,54 @@ mysql> select * from performance_schema.replication_group_members;
 3 rows in set (0.00 sec)
 ```
 
+## 14.4 监控组复制
+
+使用MySQL performance_schema数据库相关性能表监控组复制，这些性能表显示特定于组复制的信息。
+
+常用的表有：
+
+- replication_group_members
+- replication_group_member_stats
+- replication_group_communication_information
+
+下面详细介绍这三个表。
+
+### 14.4.1 replication_group_members
+
+该表显示了复制组成员的网络和状态信息，所示的网络地址是用于将客户端连接到组的地址。
+
+```sql
+mysql> select * from performance_schema.replication_group_members;
++---------------------------+--------------------------------------+----------------+-------------+--------------+-------------+----------------+----------------------------+
+| CHANNEL_NAME              | MEMBER_ID                            | MEMBER_HOST    | MEMBER_PORT | MEMBER_STATE | MEMBER_ROLE | MEMBER_VERSION | MEMBER_COMMUNICATION_STACK |
++---------------------------+--------------------------------------+----------------+-------------+--------------+-------------+----------------+----------------------------+
+| group_replication_applier | 13fc049e-c133-11ee-a377-000c29df1f85 | 192.168.131.20 |        3306 | ONLINE       | SECONDARY   | 8.0.27         | XCom                       |
+| group_replication_applier | 248563ac-c133-11ee-a387-000c29551477 | 192.168.131.30 |        3306 | ONLINE       | SECONDARY   | 8.0.27         | XCom                       |
+| group_replication_applier | f40395ea-c132-11ee-9249-000c29c00092 | 192.168.131.10 |        3306 | ONLINE       | PRIMARY     | 8.0.27         | XCom                       |
++---------------------------+--------------------------------------+----------------+-------------+--------------+-------------+----------------+----------------------------+
+3 rows in set (0.00 sec)
+```
+
+字段说明：
+
+- **CHANNEL_NAME**：组复制区域通道名称；
+- **MEMBER_ID**：成员服务器UUID。对于组中的每个成员都有不同的值。这也可以作为键，因为它对每个成员都是唯一的；
+- **MEMBER_HOST**：该成员的网络地址（主机名或IP地址）。从成员的主机名变量中检索。这是客户端连接到的地址，与用于内部组通信的group_replication_local_address不同；
+- **MEMBER_PORT**：服务器正在侦听的端口；
+- **MEMBER_STATE**：该成员的现状，可以是以下任何一种:
+   - ONLINE：成员处于功能完备的状态；
+   - RECOVERING：服务器已加入正在从中检索数据的组；
+   - OFFLINE：已安装组复制插件，但尚未启动；
+   - ERROR：成员在应用事务期间或在恢复阶段遇到错误，并且没有参与组的事务；
+   - UNREACHABLE：故障检测进程怀疑无法联系此成员，因为组消息已超时；
+- **MEMBER_ROLE**：组中成员的角色，可以是PRIMARY或SECONDARY；
+- **MEMBER_VERSION**：成员的MySQL版本；
+- **MEMBER_COMMUNICATION_STACK**：用于组的通信栈，XCOM通信栈或MYSQL通信栈。这列是在MySQL 8.0.27中添加的。
+
+### 14.4.2 replication_group_member_stats
+
+### 14.4.3 replication_group_communication_information
+
 # 15 InnoDB Cluster
 
 # 16 监控
