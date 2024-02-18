@@ -3225,9 +3225,182 @@ mysql> select * from mgrtest.demo;
 +----+------+
 ```
 
-## 14.3 单主模式和多主模式的切换
+## 14.3 单主模式和多主模式切换
 
+### 14.3.1 注意点
 
+组复制有两种运行模式，一种是单主模式，一种是多主模式。这个模式是在整个组中设置的，由 `group_replication_single_primary_mode` 这个系统变量指定，而且在所有成员上必须保持一致。ON 表示单主模式，这也是默认的模式；OFF 表示多主模式。需要注意的是，不能在同一个组的成员中同时使用不同的模式，比如：一个成员配置在多主模式，而另一个成员在单一主模式下。
+
+当组复制正在运行时，不能手动更改 `group_replication_single_primary_mode` 的值。
+
+在MySQL 8.0.13之前的版本中，如果要更改组的模式，必须停止组复制并在所有成员上更改 `group_replication_single_primary_mode` 的值。然后进行一次完整的组重启（由 `group_replication_bootstrap_group=ON` 的服务器引导），以实施对新操作配置的更改。注意：不需要重新启动mysqld服务，只需要将组复制重新引导即可。
+
+从MySQL 8.0.13开始，支持**在线**对组复制模式进行变更。使用 `group_replication_switch_to_single_primary_mode()` 和 `group_replication_switch_to_multi_primary_mode()` 这两个函数在组复制仍在运行时将组从一种模式切换到另一种模式。这两个函数会管理切换组模式的过程，并确保数据的安全性和一致性。
+
+### 14.3.2 MySQL8.0.13版本前切换方法
+
+在MySQL8.0.13版本之前的版本，不支持在线切换组复制的模式，切换模式需要重启整个组复制。
+
+**一、单主模式切换为多主模式**
+
+1.查看集群状态和模式
+
+```sql
+mysql> select * from performance_schema.replication_group_members;
+mysql> show status like 'group_replication_primary_member';
+```
+
+判断单主模式的方法是，系统状态变量`group_replication_primary_member`不为空，会显示主节点的成员号。
+
+2.在所有节点上停止组复制
+
+```sql
+mysql> stop group_replication;
+```
+
+3.修改主库的配置并重启
+
+```sql
+mysql> 
+set global group_replication_single_primary_mode=off;
+set global group_replication_enforce_update_everywhere_checks=on;
+set global group_replication_bootstrap_group=on;
+start group_replication;
+set global group_replication_bootstrap_group=OFF;
+```
+
+参数说明：
+
+- group_replication_single_primary_mode：单主模式；
+- group_replication_enforce_update_everywhere_checks：冲突检测，严格的一致性检查；
+- group_replication_bootstrap_group：组复制初始化。
+
+4.修改从库的配置并重启
+
+```sql
+mysql> 
+set global group_replication_single_primary_mode=off;
+set global group_replication_enforce_update_everywhere_checks=on;
+start group_replication;
+```
+
+**二、多主模式切换为单主模式**
+
+1.在所有节点上停止组复制
+
+```sql
+mysql> stop group_replication;
+```
+
+2.修改主库的配置并重启
+
+```sql
+mysql> 
+set global group_replication_enforce_update_everywhere_checks=off;
+set global group_replication_single_primary_mode=on;
+set global group_replication_bootstrap_group=on;
+start group_replication;
+set global group_replication_bootstrap_group=OFF;
+```
+
+4.修改从库的配置并重启
+
+```sql
+mysql> 
+set global group_replication_enforce_update_everywhere_checks=off;
+set global group_replication_single_primary_mode=on;
+start group_replication;
+```
+
+**三、问题探究**
+
+我们知道，单主模式和多主模式的一个很本质的区别是单主模式只有主库支持读写，从库只读。
+
+将集群从单主模式切换为多主模式，就要求单主模式的从库要从只读设置为可读可写。设置只读的参数为`read_only`和`super_read_only`。
+
+不知道各位是否有疑问，当组复制模式转换时，是否需要手动设置上面这两个参数？
+
+比如，当单主模式切换为多主模式时，`read_only`和`super_read_only`MySQL是否会自动设置为OFF？
+
+实验过程如下：
+
+![alt text](image-9.png)
+
+实验结果是，不需要手动设置只读参数。
+
+### 14.3.3 MySQL8.0.13及以后版本切换方法
+
+在MySQL8.0.13版本开始，支持在线切换组复制模式，不需要重启，只需要执行两个内置的函数即可快速完成切换。
+
+**一、单主模式切换为多主模式**
+
+使用group_replication_switch_to_single_primary_mode()函数将单主模式切换为多主模式。
+
+在任意节点执行如下命令:
+
+```sql
+mysql> select group_replication_switch_to_multi_primary_mode();
++--------------------------------------------------+
+| group_replication_switch_to_multi_primary_mode() |
++--------------------------------------------------+
+| Mode switched to multi-primary successfully.     |
++--------------------------------------------------+
+1 row in set (1.01 sec)
+```
+
+查看成员状态：
+
+```sql
+mysql> select * from performance_schema.replication_group_members;
++---------------------------+--------------------------------------+----------------+-------------+--------------+-------------+----------------+----------------------------+
+| CHANNEL_NAME              | MEMBER_ID                            | MEMBER_HOST    | MEMBER_PORT | MEMBER_STATE | MEMBER_ROLE | MEMBER_VERSION | MEMBER_COMMUNICATION_STACK |
++---------------------------+--------------------------------------+----------------+-------------+--------------+-------------+----------------+----------------------------+
+| group_replication_applier | 13fc049e-c133-11ee-a377-000c29df1f85 | 192.168.131.20 |        3306 | ONLINE       | PRIMARY     | 8.0.27         | XCom                       |
+| group_replication_applier | 248563ac-c133-11ee-a387-000c29551477 | 192.168.131.30 |        3306 | ONLINE       | PRIMARY     | 8.0.27         | XCom                       |
+| group_replication_applier | f40395ea-c132-11ee-9249-000c29c00092 | 192.168.131.10 |        3306 | ONLINE       | PRIMARY     | 8.0.27         | XCom                       |
++---------------------------+--------------------------------------+----------------+-------------+--------------+-------------+----------------+----------------------------+
+3 rows in set (0.00 sec)
+```
+
+切换后MEMBER_ROLE的值都为PRIMARY。
+
+**二、多主模式切换为单主模式**
+
+查看集群模式和成员号：
+
+```sql
+mysql> select * from performance_schema.replication_group_members;
++---------------------------+--------------------------------------+----------------+-------------+--------------+-------------+----------------+----------------------------+
+| CHANNEL_NAME              | MEMBER_ID                            | MEMBER_HOST    | MEMBER_PORT | MEMBER_STATE | MEMBER_ROLE | MEMBER_VERSION | MEMBER_COMMUNICATION_STACK |
++---------------------------+--------------------------------------+----------------+-------------+--------------+-------------+----------------+----------------------------+
+| group_replication_applier | 13fc049e-c133-11ee-a377-000c29df1f85 | 192.168.131.20 |        3306 | ONLINE       | PRIMARY     | 8.0.27         | XCom                       |
+| group_replication_applier | 248563ac-c133-11ee-a387-000c29551477 | 192.168.131.30 |        3306 | ONLINE       | PRIMARY     | 8.0.27         | XCom                       |
+| group_replication_applier | f40395ea-c132-11ee-9249-000c29c00092 | 192.168.131.10 |        3306 | ONLINE       | PRIMARY     | 8.0.27         | XCom                       |
++---------------------------+--------------------------------------+----------------+-------------+--------------+-------------+----------------+----------------------------+
+3 rows in set (0.00 sec)
+```
+
+指定成员号切换模式：
+
+```sql
+mysql> SELECT group_replication_switch_to_single_primary_mode('f40395ea-c132-11ee-9249-000c29c00092');
++-----------------------------------------------------------------------------------------+
+| group_replication_switch_to_single_primary_mode('f40395ea-c132-11ee-9249-000c29c00092') |
++-----------------------------------------------------------------------------------------+
+| Mode switched to single-primary successfully.                                           |
++-----------------------------------------------------------------------------------------+
+1 row in set (0.03 sec)
+
+mysql> select * from performance_schema.replication_group_members;
++---------------------------+--------------------------------------+----------------+-------------+--------------+-------------+----------------+----------------------------+
+| CHANNEL_NAME              | MEMBER_ID                            | MEMBER_HOST    | MEMBER_PORT | MEMBER_STATE | MEMBER_ROLE | MEMBER_VERSION | MEMBER_COMMUNICATION_STACK |
++---------------------------+--------------------------------------+----------------+-------------+--------------+-------------+----------------+----------------------------+
+| group_replication_applier | 13fc049e-c133-11ee-a377-000c29df1f85 | 192.168.131.20 |        3306 | ONLINE       | SECONDARY   | 8.0.27         | XCom                       |
+| group_replication_applier | 248563ac-c133-11ee-a387-000c29551477 | 192.168.131.30 |        3306 | ONLINE       | SECONDARY   | 8.0.27         | XCom                       |
+| group_replication_applier | f40395ea-c132-11ee-9249-000c29c00092 | 192.168.131.10 |        3306 | ONLINE       | PRIMARY     | 8.0.27         | XCom                       |
++---------------------------+--------------------------------------+----------------+-------------+--------------+-------------+----------------+----------------------------+
+3 rows in set (0.00 sec)
+```
 
 # 15 InnoDB Cluster
 
