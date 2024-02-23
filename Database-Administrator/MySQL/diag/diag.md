@@ -1,18 +1,194 @@
-# 1 备份
+**目录**
 
-# 2 恢复
+[toc]
 
-**一、数据库备份恢复过程中的报错：ERROR 3546 (HY000) at line 24: @@GLOBAL.GTID_PURGED cannot be changed: the added gtid set must not overlap with @@GLOBAL.GTID_EXECUTED**
+# 1 锁、进程相关
 
-```bash
-重新dump数据库，使用 --set-gtid-purged=off的参数禁止导出gtid信息，再load进目标数据库。
+## 1.1 show processlist大量进程显示：wait global read lock
 
-mysqldump -uroot -p --set-gtid-purged=off slowtech t1 > slowtech.t1.sql
+用 xtrabackup 等备份工具做备份时会有全局锁，正常情况锁占用时间很短，但偶尔会遇到锁长时间占用导致系统写入阻塞，现象是 show processlist 看到众多会话显示 wait global read lock，那可能对业务影响会很大。而且 show processlist 是无法看到哪个会话持有了全局锁，如果直接杀掉备份进程有可能进程杀掉了，但锁依然没释放，数据库还是无法写入。这时我们需要有快速定位持有全局锁会话的方法，杀掉对应会话数据库就恢复正常了。
+
+**方法1：利用 metadata_locks 视图**
+
+此方法仅适用于 MySQL 5.7 以上版本，该版本 performance_schema 新增了 metadata_locks，如果上锁前启用了元数据锁的探针（默认是未启用的），可以比较容易的定位全局锁会话。
+
+OBJECT_TYPE=GLOBAL  LOCK_TYPE=SHARED 表示全局锁
+
+```sql
+#开启元数据锁对应的探针
+
+mysql> UPDATE performance_schema.setup_instruments SET ENABLED = 'YES' WHERE NAME = 'wait/lock/metadata/sql/mdl';
+
+Query OK, 1 row affected (0.04 sec)
+
+Rows matched: 1  Changed: 1  Warnings: 0
+
+
+
+#模拟上锁
+
+mysql> flush tables with read lock;
+
+Query OK, 0 rows affected (0.06 sec)
+
+
+mysql> select * from performance_schema.metadata_locks;
+
++-------------+--------------------+----------------+-----------------------+---------------------+---------------+-------------+-------------------+-----------------+----------------+
+
+| OBJECT_TYPE | OBJECT_SCHEMA      | OBJECT_NAME    | OBJECT_INSTANCE_BEGIN | LOCK_TYPE           | LOCK_DURATION | LOCK_STATUS | SOURCE            | OWNER_THREAD_ID | OWNER_EVENT_ID |
+
++-------------+--------------------+----------------+-----------------------+---------------------+---------------+-------------+-------------------+-----------------+----------------+
+
+| GLOBAL      | NULL               | NULL           |       140613033070288 | SHARED              | EXPLICIT      | GRANTED     | lock.cc:1110      |          268969 |             80 |
+
+| COMMIT      | NULL               | NULL           |       140612979226448 | SHARED              | EXPLICIT      | GRANTED     | lock.cc:1194      |          268969 |             80 |
+
+| GLOBAL      | NULL               | NULL           |       140612981185856 | INTENTION_EXCLUSIVE | STATEMENT     | PENDING     | sql_base.cc:3189  |          303901 |            665 |
+
+| TABLE       | performance_schema | metadata_locks |       140612983552320 | SHARED_READ         | TRANSACTION   | GRANTED     | sql_parse.cc:6030 |          268969 |             81 |
+
++-------------+--------------------+----------------+-----------------------+---------------------+---------------+-------------+-------------------+-----------------+----------------+
+
+4 rows in set (0.01 sec)
+
+#OBJECT_TYPE=GLOBAL  LOCK_TYPE=SHARED 表示全局锁
+
+
+mysql> select t.processlist_id from performance_schema.threads t join performance_schema.metadata_locks ml on ml.owner_thread_id = t.thread_id where ml.object_type='GLOBAL' and ml.lock_type='SHARED';
+
++----------------+
+| processlist_id |
++----------------+
+|         268944 |
++----------------+
+
+1 row in set (0.00 sec)
 ```
 
-# 3 binlog
+定位到锁会话 ID 直接 kill 该会话即可。
 
-mysql磁盘空间满，导致挂库
+**方法2：利用 events_statements_history 视图**
+
+此方法适用于 MySQL 5.6 以上版本，启用 performance_schema.eventsstatements_history（5.6 默认未启用，5.7 默认启用），该表会 SQL 历史记录执行，如果请求太多，会自动清理早期的信息，有可能将上锁会话的信息清理掉。
+
+```sql
+#开启events_statements_history
+mysql> update performance_schema.setup_consumers set enabled = 'YES' where NAME = 'events_statements_history'
+
+Query OK, 0 rows affected (0.00 sec)
+
+Rows matched: 1  Changed: 0  Warnings: 0
+
+
+#模拟上锁
+mysql> flush tables with read lock;
+
+Query OK, 0 rows affected (0.00 sec)
+
+
+mysql> select * from performance_schema.events_statements_history where sql_text like 'flush tables%'\G
+
+*************************** 1. row ***************************
+
+              THREAD_ID: 39
+
+               EVENT_ID: 21
+
+           END_EVENT_ID: 21
+
+             EVENT_NAME: statement/sql/flush
+
+                 SOURCE: socket_connection.cc:95
+
+            TIMER_START: 94449505549959000
+
+              TIMER_END: 94449505807116000
+
+             TIMER_WAIT: 257157000
+
+              LOCK_TIME: 0
+
+               SQL_TEXT: flush tables with read lock
+
+                 DIGEST: 03682cc3e0eaed3d95d665c976628d02
+
+            DIGEST_TEXT: FLUSH TABLES WITH READ LOCK
+...
+
+    NESTING_EVENT_LEVEL: 0
+
+1 row in set (0.00 sec)
+
+#查看对应进程
+mysql> select t.processlist_id from performance_schema.threads t join performance_schema.events_statements_history h on h.thread_id = t.thread_id where h.digest_text like 'FLUSH TABLES%';
+
++----------------+
+
+| processlist_id |
+
++----------------+
+
+|             12 |
+
++----------------+
+
+1 row in set (0.01 sec)
+```
+
+**方法3：show processlist**
+
+```sql
+如果备份程序使用的特定用户执行备份，如果是 root 用户备份，那 time 值越大的是持锁会话的概率越大，如果业务也用 root 访问，重点是 state 和 info 为空的，这里有个小技巧可以快速筛选，筛选后尝试 kill 对应 ID，再观察是否还有 wait global read lock 状态的会话。
+```
+
+**方法4：重启**
+
+如果所有方法都不奏效，重启试试。
+
+## 1.2 cpu过高
+
+**一、产生原因**
+
+数据库系统通常情况下CPU不会成为瓶颈，导致服务器cpu飙升的原因一般是存在执行慢sql。
+
+通常情况有两种：
+
+1. 一般由于**某个慢SQL或者某一类性能不好的SQL大量执行**，导致的CPU暴增。通过脚本查看当前活动事务SQL，按照时间排序，可以很明显的找到源头。
+
+2. 由**多个问题SQL高并发执行**，且与正常SQL间杂在一起。这种情况，SQL执行很快，无法有效判断到底哪一类SQL出的问题，我会通过开启slowlog临时收集，再通过pt-query-digest分析开销最大的SQL优化处理。
+
+**二、解决过程**
+
+**1）找到CPU高的线程**
+
+```bash
+top -H
+```
+
+**2）查看线程信息**
+
+```sql
+select * from performance_schema.threads where thread_os_id = '';
+```
+
+**3）查看线程详细信息**
+
+将步骤2的thread_id代入：
+
+```sql
+select * from performance_schema.events_statements_current where thread = '';
+```
+
+**4）杀进程**
+
+确认SQL有问题后，直接将**THREAD_OS_ID**进程kill掉。
+
+kill完后，检查cpu使用率是否下降。
+
+# 2 I/O、磁盘、文件、存储相关
+
+## 2.1 磁盘空间满，导致挂库
 
 可以先临时清理binlog释放空间，启动库，后续再挂新盘
 
@@ -25,26 +201,26 @@ https://www.modb.pro/db/606883
 
 ![Alt text](fdba50eb6e13fe13e854485016fbc9b.png)
 
-# 3 组复制
+# 3 集群相关
 
 ## 3.1 MY-011526
 
-**1）错误日志**
+**一、错误日志**
 
 2024-02-03T00:33:18.335943+08:00 0 [ERROR] [MY-011526] [Repl] Plugin group_replication reported: 'This member has more executed transactions than those present in the group. Local transactions: 13fc049e-c133-11ee-a377-000c29df1f85:1 > Group transactions: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa:1-10'
 2024-02-03T00:33:18.336062+08:00 0 [ERROR] [MY-011522] [Repl] Plugin group_replication reported: 'The member contains transactions not present in the group. The member will now exit the group.'
 
-**2）错误说明**
+**二、错误说明**
 
 这个错误信息表明MySQL Group Replication中的某个成员与组中的其他成员之间存在事务不一致的情况，以及成员将退出组。具体来说，该成员执行的事务数目比组中存在的事务数目多。这可能是由于同步问题或者复制流程中的某些异常情况引起的。
 
 
-**3）引发问题的原因**
+**三、引发问题的原因**
 
 - 从库执行了flush privileges，任何FLUSH语句都被记录到binlog中。
 - 从库可写，从库的super_read_only未设置为ON。
 
-**3）解决办法**
+**四、解决办法**
 
 参考文章：
 
@@ -60,4 +236,41 @@ https://www.modb.pro/db/606883
 SET GTID_NEXT='13fc049e-c133-11ee-a377-000c29df1f85:1';
 BEGIN; COMMIT;
 SET GTID_NEXT=AUTOMATIC;
+```
+
+# 4 连接相关
+
+## 4.1 忘记root码
+
+首先，需要确认是“root@localhost”还是“root@%”密码丢失，因为这是2个不同的用户，若其中一个丢失，那么可以使用另一个用户登录，然后修改密码。
+
+```bash
+vim /etc/my.cnf
+#添加
+skip-grant-tables
+
+systemctl restart mysqld
+
+mysql -uroot
+
+# < mysql5.7
+update mysql.user set password=password('Root123.') where user='root';
+select user,host,grant_priv,super_priv,password,authentication_string from mysql.user;
+
+# > mysql5,7
+flush privileges;
+alter user root@'localhost' identified by 'test';
+alter user root@'%' identified by 'test';
+select user,host,grant_priv,super_priv,authentication_string,password_last_changed from mysql.user;
+```
+
+# 5 备份恢复相关
+
+## 5.1 ERROR 3546 (HY000)
+**一、数据库备份恢复过程中的报错：ERROR 3546 (HY000) at line 24: @@GLOBAL.GTID_PURGED cannot be changed: the added gtid set must not overlap with @@GLOBAL.GTID_EXECUTED**
+
+```bash
+重新dump数据库，使用 --set-gtid-purged=off的参数禁止导出gtid信息，再load进目标数据库。
+
+mysqldump -uroot -p --set-gtid-purged=off slowtech t1 > slowtech.t1.sql
 ```
