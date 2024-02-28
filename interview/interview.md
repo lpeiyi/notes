@@ -189,7 +189,7 @@ Oracle Grid Infrastructure安装的至少8GB。
 
 ## 4.2 实时备份
 
-# 5 数据库故障处理
+# 5 故障处理
 
 ## 5.1 os层
 
@@ -197,15 +197,19 @@ Oracle Grid Infrastructure安装的至少8GB。
 
 ## 5.3 mysql故障处理
 
-# 6 nginx
+# 6 redis(nosql)
 
-## 6.1 nginx介绍
+缓存
+
+# 7 nginx
+
+## 7.1 nginx介绍
 
 Nginx (engine x) 是一个**高性能的HTTP和反向代理web服务器**，同时也提供了IMAP/POP3/SMTP（电子邮件）服务。Nginx是由伊戈尔·赛索耶夫为俄罗斯访问量第二的Rambler.ru站点（俄文：Рамблер）开发的，第一个公开版本0.1.0发布于2004年10月4日。2011年6月1日，nginx 1.0.4发布。
 
 其特点是**占有内存少，并发能力强，易于开发，部署方便，事实上nginx的并发能力在同类型的网页服务器中表现较好的**，中国大陆使用nginx网站用户有：百度、京东、新浪、网易、腾讯、淘宝等。在全球活跃的网站中有12.18%的使用比率，大约为2220万个网站。
 
-## 6.2 nginx作用
+## 7.2 nginx作用
 
 Http代理，反向代理：作为web服务器最常用的功能之一，尤其是**反向代理**。
 
@@ -236,7 +240,7 @@ Nginx提供的负载均衡策略有2种：内置策略和扩展策略。内置�
 ![alt text](image-3.png)
 
 
-## 6.3 Apache​、Nginx 和tomcat 区别
+## 7.3 Apache​、Nginx 和tomcat 区别
 
 **一、nginx**  
 
@@ -262,16 +266,20 @@ Nginx适合做前端服务器，负载性能很好;
 
 Nginx本身就是一个反向代理服务器 ，且支持负载均衡；
 
-# 7 tomcat
+# 8 tomcat
 
+# 9 监控
 
-
-# 8 监控
-
-## 8.1 zabbix
+## 9.1 zabbix
 
 [Zabbix](http://t.csdnimg.cn/Z46Oe)
 
-## 8.2 pmp
+## 9.2 pmp
 
 [PMM](http://t.csdnimg.cn/59zP5)
+
+# 10 网络
+
+## 10.1 tcp/ip
+
+## 10.2 网络问题
