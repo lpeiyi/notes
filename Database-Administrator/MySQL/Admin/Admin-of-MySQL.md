@@ -3410,7 +3410,6 @@ mysql> select * from performance_schema.replication_group_members;
 
 - replication_group_members
 - replication_group_member_stats
-- replication_group_communication_information
 
 下面详细介绍这三个表。
 
@@ -3448,7 +3447,70 @@ mysql> select * from performance_schema.replication_group_members;
 
 ### 14.4.2 replication_group_member_stats
 
-### 14.4.3 replication_group_communication_information
+此表提供了与认证过程相关的组级信息，以及复制组的每个成员接收和发起的事务的统计信息
+
+```sql
+mysql> select * from performance_schema.replication_group_member_stats\G
+*************************** 1. row ***************************
+                              CHANNEL_NAME: group_replication_applier
+                                   VIEW_ID: 17082578864394446:3
+                                 MEMBER_ID: 13fc049e-c133-11ee-a377-000c29df1f85
+               COUNT_TRANSACTIONS_IN_QUEUE: 0
+                COUNT_TRANSACTIONS_CHECKED: 0
+                  COUNT_CONFLICTS_DETECTED: 0
+        COUNT_TRANSACTIONS_ROWS_VALIDATING: 0
+        TRANSACTIONS_COMMITTED_ALL_MEMBERS: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa:1-24
+            LAST_CONFLICT_FREE_TRANSACTION:
+COUNT_TRANSACTIONS_REMOTE_IN_APPLIER_QUEUE: 1
+         COUNT_TRANSACTIONS_REMOTE_APPLIED: 1
+         COUNT_TRANSACTIONS_LOCAL_PROPOSED: 0
+         COUNT_TRANSACTIONS_LOCAL_ROLLBACK: 0
+*************************** 2. row ***************************
+                              CHANNEL_NAME: group_replication_applier
+                                   VIEW_ID: 17082578864394446:3
+                                 MEMBER_ID: 248563ac-c133-11ee-a387-000c29551477
+               COUNT_TRANSACTIONS_IN_QUEUE: 0
+                COUNT_TRANSACTIONS_CHECKED: 0
+                  COUNT_CONFLICTS_DETECTED: 0
+        COUNT_TRANSACTIONS_ROWS_VALIDATING: 0
+        TRANSACTIONS_COMMITTED_ALL_MEMBERS: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa:1-24
+            LAST_CONFLICT_FREE_TRANSACTION:
+COUNT_TRANSACTIONS_REMOTE_IN_APPLIER_QUEUE: 1
+         COUNT_TRANSACTIONS_REMOTE_APPLIED: 0
+         COUNT_TRANSACTIONS_LOCAL_PROPOSED: 0
+         COUNT_TRANSACTIONS_LOCAL_ROLLBACK: 0
+*************************** 3. row ***************************
+                              CHANNEL_NAME: group_replication_applier
+                                   VIEW_ID: 17082578864394446:3
+                                 MEMBER_ID: f40395ea-c132-11ee-9249-000c29c00092
+               COUNT_TRANSACTIONS_IN_QUEUE: 0
+                COUNT_TRANSACTIONS_CHECKED: 0
+                  COUNT_CONFLICTS_DETECTED: 0
+        COUNT_TRANSACTIONS_ROWS_VALIDATING: 0
+        TRANSACTIONS_COMMITTED_ALL_MEMBERS: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa:1-24
+            LAST_CONFLICT_FREE_TRANSACTION:
+COUNT_TRANSACTIONS_REMOTE_IN_APPLIER_QUEUE: 0
+         COUNT_TRANSACTIONS_REMOTE_APPLIED: 3
+         COUNT_TRANSACTIONS_LOCAL_PROPOSED: 0
+         COUNT_TRANSACTIONS_LOCAL_ROLLBACK: 0
+3 rows in set (0.01 sec)
+```
+
+字段说明：
+
+- **CHANNEL_NAME**：channel名；
+- **VIEW_ID**：组视图id；
+- **MEMBER_ID**：成员uuid；
+- **COUNT_TRANSACTIONS_IN_QUEUE**：等待冲突检测检查的队列中的事务数；
+- **COUNT_TRANSACTIONS_CHECKED**：已检查冲突的事务数；
+- **COUNT_CONFLICTS_DETECTED**：未通过冲突检测检查的事务数；
+- **COUNT_TRANSACTIONS_ROWS_VALIDATING**：冲突检测数据库当前的记录数；
+- **TRANSACTIONS_COMMITTED_ALL_MEMBERS**：在组复制的所有成员上成功提交的事务，显示为GTID集。这是以固定60s的时间间隔更新的；
+- **LAST_CONFLICT_FREE_TRANSACTION**：最后一次检查的无冲突事务的GTID；
+- **COUNT_TRANSACTIONS_REMOTE_IN_APPLIER_QUEUE**：成员从复制组接收到等待应用的事务数；
+- **COUNT_TRANSACTIONS_REMOTE_APPLIED**：成员从复制组接收到已经应用的事务数；
+- **COUNT_TRANSACTIONS_LOCAL_PROPOSED**：由该成员发起，并发送到组的事务数；
+- **COUNT_TRANSACTIONS_LOCAL_ROLLBACK**：由该成员发起，，并由组回滚的事务数。
 
 # 15 InnoDB Cluster
 

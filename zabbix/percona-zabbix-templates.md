@@ -1,3 +1,7 @@
+**目录**
+
+[toc]
+
 # 1 PMP介绍
 
 PMP（percona-monitoring-pluggins）是高质量的mysql监控组件，以模板、插件和脚本的形式提供我们去应用。可以将企业级MySQL功能添加到现有的本地监控解决方案中，支持如Nagios、Cacti和Zabbix等热门解决方案。
@@ -256,6 +260,8 @@ Jan 27 01:46:08 mysql001 systemd[1]: Started SYSV: Zabbix Monitoring Agent.
 
 # 4 PMP自定义监控项
 
+## 4.1 常规监控项添加
+
 PMP虽然提供了191个监控项，但还缺少了很多常用的**监控指标**，比如：
 
 - **QPS（Queries Per Second）**：每秒的查询数，对数据库而言就是数据库每秒执行的SQL数（含 insert、select、update、delete 等）；
@@ -406,3 +412,180 @@ Jan 27 23:39:26 mysql001 systemd[1]: Started SYSV: Zabbix Monitoring Agent.
 与上面三个监控项不同，TPS需要用公式计算，因此Item Type需要设置为`Calculated`，代表计算的意思。计算公式添加在`Formula`中。
 
 ![Alt text](image-11.png)
+
+## 4.2 业务监控项添加
+
+在生产中，监控系统除了监控性能指标外，核心业务数据指标也需要配置监控系统。
+
+有些朋友说，业务数据监控系统一般由数据分析的同事负责开发，运维人员可以置身事外。在大公司也许是这样的，但是一般有几家公司舍得招人来专门做数据分析呢？哈哈。像我司，监控业务数据指标就是由运维同学来完成的。
+
+业务系统监控主要监控业务相关指标，不同项目或者不同区域的监控目标差异比较大，高度依赖业务本身，因此个性化属性比较强。
+
+监控基本方式是通过sql查询数据库相关内容状态和信息来实现，这里以监控数据库表空间为例，讲解此监控项建立的过程，希望能有一定的指导作用，方便本地人员根据自己的实际情况，建立监控内容。
+
+**一、演示数据**
+
+- 数据库：sakila
+- 下载地址：https://dev.mysql.com/doc/index-other.html
+
+![alt text](image-12.png)
+
+- EER图：
+
+![alt text](image-13.png)
+
+- 业务监控指标需求：
+
+获取Lethbridge城市当前的累计营业，sql如下：
+
+```sql
+mysql>
+select sum(p.amount) amount
+  from sakila.customer c,
+	   sakila.payment p,
+       sakila.store s,
+	   sakila.address a,
+	   sakila.city ct 
+ where c.customer_id = p.customer_id
+   and c.store_id = s.store_id 
+   and s.address_id = a.address_id 
+   and a.city_id = ct.city_id 
+   and ct.city = 'Lethbridge';
+
++----------+
+| amount   |
++----------+
+| 36997.53 |
++----------+
+1 row in set (0.02 sec)
+```
+
+
+**二、创建监控项脚本文件，并赋权**
+
+```bash
+[root@mysql001 scripts]# touch /var/lib/zabbix/percona/scripts/business_data.sh
+[root@mysql001 scripts]# chmod +x /var/lib/zabbix/percona/scripts/business_data.sh
+[root@mysql001 scripts]# ll /var/lib/zabbix/percona/scripts/business_data.sh
+-rwxr-xr-x 1 root root 587 Feb 25 18:15 /var/lib/zabbix/percona/scripts/business_data.sh
+```
+
+**三、修改zabbix agent配置文件，添加监控项脚本文件**
+
+```bash
+[root@mysql001 scripts]# vim /usr/local/zabbix/etc/zabbix_agentd.conf.d/userparameter_percona_mysql.conf
+#添加
+UserParameter=business_data[*],/var/lib/zabbix/percona/scripts/business_data.sh $1
+```
+
+**四、监控用户赋权**
+
+```sql
+mysql> grant select on sakila.* to pmp@localhost;
+Query OK, 0 rows affected (0.01 sec)
+
+mysql> show grants for pmp@localhost;
++---------------------------------------------------------------+
+| Grants for pmp@localhost                                      |
++---------------------------------------------------------------+
+| GRANT PROCESS, REPLICATION CLIENT ON *.* TO `pmp`@`localhost` |
+| GRANT SELECT ON `sakila`.* TO `pmp`@`localhost`               |
++---------------------------------------------------------------+
+2 rows in set (0.00 sec)
+```
+
+**五、测试监控脚本**
+
+```bash
+#过滤前：
+[mysql@mysql001 ~]$ mysql -upmp -pPmp123456. -e "select sum(p.amount) amount from sakila.customer c, sakila.payment p, sakila.store s, sakila.address a, sakila.city ct where c.customer_id = p.customer_id and c.store_id = s.store_id and s.address_id = a.address_id and a.city_id = ct.city_id and ct.city = 'Lethbridge'\G"
+mysql: [Warning] Using a password on the command line interface can be insecure.
+*************************** 1. row ***************************
+amount: 36997.53
+
+#过滤后：
+[mysql@mysql001 ~]$ mysql -upmp -pPmp123456. -e "select sum(p.amount) amount from sakila.customer c, sakila.payment p, sakila.store s, sakila.address a, sakila.city ct where c.customer_id = p.customer_id and c.store_id = s.store_id and s.address_id = a.address_id and a.city_id = ct.city_id and ct.city = 'Lethbridge'\G" 2>/dev/null | awk 'NR==2 {print $2}'
+36997.53
+```
+
+命令解析：
+
+- 2>/dev/null：去除MySQL命令行直接输入密码警告；
+- awk 'NR==2'：取第二行数据；
+- awk '{print $2}'：取第二列数值。
+
+**六、配置监控项脚本**
+
+```bash
+[root@mysql001 scripts]# vim /var/lib/zabbix/percona/scripts/business_data.sh
+#添加：
+
+#!/bin/bash
+#定义一个本地用户登录mysql数据库的变量
+case $1 in
+        #case1: Lethbridge_Amount
+        Lethbridge_Amount)
+        mysql -upmp -pPmp123456. -e "select sum(p.amount) amount from sakila.customer c, sakila.payment p, sakila.store s, sakila.address a, sakila.city ct where c.customer_id = p.customer_id and c.store_id = s.store_id and s.address_id = a.address_id and a.city_id = ct.city_id and ct.city = 'Lethbridge'\G" 2>/dev/null | awk 'NR==2 {print $2}'
+        ;;
+        #case2: number of actors
+        Number_of_Actors)
+        mysql -upmp -pPmp123456. -e "select count(*) from sakila.actor\G" 2>/dev/null | awk 'NR==2 {print $2}'
+        ;;
+esac
+```
+
+**七、重启zabbix_agentd**
+
+```bash
+[root@mysql001 scripts]# systemctl restart zabbix_agentd
+[root@mysql001 scripts]# systemctl status zabbix_agentd
+● zabbix_agentd.service - SYSV: Zabbix Monitoring Agent
+   Loaded: loaded (/etc/rc.d/init.d/zabbix_agentd; bad; vendor preset: disabled)
+   Active: active (running) since Sun 2024-02-25 21:04:38 CST; 9s ago
+     Docs: man:systemd-sysv-generator(8)
+  Process: 12525 ExecStop=/etc/rc.d/init.d/zabbix_agentd stop (code=exited, status=0/SUCCESS)
+  Process: 12539 ExecStart=/etc/rc.d/init.d/zabbix_agentd start (code=exited, status=0/SUCCESS)
+ Main PID: 12548 (zabbix_agentd)
+   CGroup: /system.slice/zabbix_agentd.service
+           ├─12548 /usr/local/zabbix/sbin/zabbix_agentd -c /usr/local/zabbix/etc/zabbix_agentd.conf
+           ├─12549 /usr/local/zabbix/sbin/zabbix_agentd: collector [idle 1 sec]
+           ├─12550 /usr/local/zabbix/sbin/zabbix_agentd: listener #1 [waiting for connection]
+           ├─12551 /usr/local/zabbix/sbin/zabbix_agentd: listener #2 [waiting for connection]
+           ├─12552 /usr/local/zabbix/sbin/zabbix_agentd: listener #3 [waiting for connection]
+           └─12553 /usr/local/zabbix/sbin/zabbix_agentd: active checks #1 [idle 1 sec]
+
+Feb 25 21:04:38 mysql001 systemd[1]: Starting SYSV: Zabbix Monitoring Agent...
+Feb 25 21:04:38 mysql001 zabbix_agentd[12539]: Starting Zabbix Agent: [  OK  ]
+Feb 25 21:04:38 mysql001 systemd[1]: Started SYSV: Zabbix Monitoring Agent.
+```
+
+**八、测试**
+
+到`zabbix server`的bin目录下执行zabbix_get测试：
+
+```bash
+[root@zabbix6 bin]# ./zabbix_get -s 192.168.131.99 -k business_data[Lethbridge_Amount]
+36997.53
+```
+
+测试成功！！
+
+**九、创建主机**
+
+![alt text](image-14.png)
+
+**十、添加监控项**
+
+![alt text](image-15.png)
+
+错误信息：
+
+![alt text](image-16.png)
+
+数据为浮点型型，监控项配置了数值型，所以报错。修改监控项配置：
+
+![alt text](image-17.png)
+
+**八、结果呈现**
+
+![alt text](image-18.png)
