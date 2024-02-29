@@ -269,8 +269,99 @@ select user,host,grant_priv,super_priv,authentication_string,password_last_chang
 ## 5.1 ERROR 3546 (HY000)
 **一、数据库备份恢复过程中的报错：ERROR 3546 (HY000) at line 24: @@GLOBAL.GTID_PURGED cannot be changed: the added gtid set must not overlap with @@GLOBAL.GTID_EXECUTED**
 
+**解决方案：**
+
 ```bash
 重新dump数据库，使用 --set-gtid-purged=off的参数禁止导出gtid信息，再load进目标数据库。
 
 mysqldump -uroot -p --set-gtid-purged=off slowtech t1 > slowtech.t1.sql
 ```
+
+## 5.2 从库表误删除恢复
+
+https://www.modb.pro/course/article/192
+
+**报错信息：**
+
+```sql
+Slave_SQL_Running: No
+Last_Error: Error executing row event: ‘Table ‘cjc.t2’ doesn’t exist’
+Last_SQL_Errno: 1146
+Last_SQL_Error: Error executing row event: ‘Table ‘cjc.t2’ doesn’t exist’
+```
+
+**解决方案：**
+
+```sql
+1.从库上忽略该表的同步：关闭sql线程，忽略，开启sql线程
+
+2.恢复从库t2表数据：关闭复制，主库加锁，主库备份表，导入从库，
+
+3.从库忽略过滤：从库检查表数据，忽略过滤，
+
+4.启动同步
+
+5.主、从：验证数据量是否一致
+
+6.主库：解锁表
+```
+
+## 5.3 MySQL恢复指定表结构
+
+### 5.3.1 从测试库拉取建表语句
+
+**备份表结构：**
+
+```bash
+mysqldump -u[username] -p --no-data [database_name] [table_name] > [table_name]_structure.sql
+```
+
+**导入**
+
+```bash
+mysql -u[username] -p [database_name] < [table_name]_structure.sql
+```
+
+### 5.3.2 从备份文件拉取表结构
+
+全备数据量很小时，直接通过vi进行查找
+
+数据量大时，通过脚本过滤出来
+
+```bash
+grep -A100 "CREATE TABLE `demo`" /mysq
+
+sed -e’/./{H;$!d;}’ -e ‘x;/CREATE TABLE t2/!d;q’ /mysqldata/bak/mysql_bak1.sql
+```
+
+## 5.4 恢复表数据\表\库
+
+### 5.4.1 单库
+
+找到binlog和pos
+
+恢复：
+
+```bash
+mysqlbinlog --start-position=xxx --stop-position=xxx --database xxx binlog.xxx
+```
+
+### 5.4.1 主备
+
+使用xtrabackup，做一个全库备份
+
+模拟一些update操作，然后drop table
+
+找一台服务器，新建一个实例
+
+恢复全量备份
+
+新实例与原主库配置同步关系
+
+设置复制过滤只复制出错的表（可以快速应用日志）-->这步我没做，忘记了。。
+
+利用 start slave sql_thread until sql_before_gtids='xxxxx:n' 恢复数据到drop操作之前。
+
+再利用表空间传输或是单表逻辑备份，导入生产库中
+
+完成恢复
