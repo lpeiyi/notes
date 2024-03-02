@@ -238,6 +238,324 @@ BEGIN; COMMIT;
 SET GTID_NEXT=AUTOMATIC;
 ```
 
+## 3.2 sql线程错误，跳过指定事务
+
+**一、查看复制状态**
+
+```sql
+mysql> show slave status\G
+*************************** 1. row ***************************
+               Slave_IO_State: Waiting for source to send event
+                  Master_Host: 192.168.131.99
+                  Master_User: repl
+                  Master_Port: 3306
+                Connect_Retry: 60
+              Master_Log_File: binlog.000068
+          Read_Master_Log_Pos: 586
+               Relay_Log_File: mysql002-relay-bin.000010
+                Relay_Log_Pos: 672
+        Relay_Master_Log_File: binlog.000061
+             Slave_IO_Running: Yes
+            Slave_SQL_Running: No
+              Replicate_Do_DB:
+          Replicate_Ignore_DB:
+           Replicate_Do_Table:
+       Replicate_Ignore_Table:
+      Replicate_Wild_Do_Table:
+  Replicate_Wild_Ignore_Table:
+                   Last_Errno: 1410
+                   Last_Error: Coordinator stopped because there were error(s) in the worker(s). The most recent failure being: Worker 1 failed                       executing transaction 'bd4b724b-ab29-11ee-826f-000c294bd026:424255' at source log binlog.000061, end_log_pos 2765. See error log and/or perfor                      mance_schema.replication_applier_status_by_worker table for more details about this failure or others, if any.
+                 Skip_Counter: 0
+          Exec_Master_Log_Pos: 1766
+              Relay_Log_Space: 9989536
+              Until_Condition: None
+               Until_Log_File:
+                Until_Log_Pos: 0
+           Master_SSL_Allowed: No
+           Master_SSL_CA_File:
+           Master_SSL_CA_Path:
+              Master_SSL_Cert:
+            Master_SSL_Cipher:
+               Master_SSL_Key:
+        Seconds_Behind_Master: NULL
+Master_SSL_Verify_Server_Cert: No
+                Last_IO_Errno: 0
+                Last_IO_Error:
+               Last_SQL_Errno: 1410
+               Last_SQL_Error: Coordinator stopped because there were error(s) in the worker(s). The most recent failure being: Worker 1 failed                       executing transaction 'bd4b724b-ab29-11ee-826f-000c294bd026:424255' at source log binlog.000061, end_log_pos 2765. See error log and/or perfor                      mance_schema.replication_applier_status_by_worker table for more details about this failure or others, if any.
+  Replicate_Ignore_Server_Ids:
+             Master_Server_Id: 1
+                  Master_UUID: bd4b724b-ab29-11ee-826f-000c294bd026
+             Master_Info_File: mysql.slave_master_info
+                    SQL_Delay: 0
+          SQL_Remaining_Delay: NULL
+      Slave_SQL_Running_State:
+           Master_Retry_Count: 86400
+                  Master_Bind:
+      Last_IO_Error_Timestamp:
+     Last_SQL_Error_Timestamp: 240302 23:30:53
+               Master_SSL_Crl:
+           Master_SSL_Crlpath:
+           Retrieved_Gtid_Set: bd4b724b-ab29-11ee-826f-000c294bd026:424253-426568
+            Executed_Gtid_Set: 2218063c-aef7-11ee-9e40-000c29f059d3:1-6,
+bd4b724b-ab29-11ee-826f-000c294bd026:1-424254
+                Auto_Position: 1
+         Replicate_Rewrite_DB:
+                 Channel_Name:
+           Master_TLS_Version:
+       Master_public_key_path:
+        Get_master_public_key: 1
+            Network_Namespace:
+1 row in set, 1 warning (0.00 sec)
+```
+
+**二、错误分析**
+
+根据复制状态，可以看到 Slave_SQL_Running: No，此时sql线程已经停止，错误信息为：
+
+```sql
+Last_SQL_Error: Coordinator stopped because there were error(s) in the worker(s). The most recent failure being: Worker 1 failed executing transaction'bd4b724b-ab29-11ee-826f-000c294bd026:424255' at source log binlog.000061, end_log_pos 2765. See error log and/or perfor mance_schema.replication_applier_status_by_worker table for more details about this failure or others, if any.
+```
+
+提示 Worker 1 有执行错误的事务，根据提示查看性能视图：
+
+```sql
+mysql> select * from performance_schema.replication_applier_status_by_worker where LAST_ERROR_MESSAGE <> ''\G
+*************************** 1. row ***************************
+                                           CHANNEL_NAME:
+                                              WORKER_ID: 1
+                                              THREAD_ID: NULL
+                                          SERVICE_STATE: OFF
+                                      LAST_ERROR_NUMBER: 1410
+                                     LAST_ERROR_MESSAGE: Worker 1 failed executing transaction 'bd4b724b-ab29-11ee-826f-000c294bd026:424255' at source log binlog.000061, end_log_pos 2765; Error 'You are not allowed to create a user with GRANT' on query. Default database: ''. Query: 'GRANT SELECT, RELOAD, PROCESS, REPLICATION CLIENT, BACKUP_ADMIN ON *.* TO 'pmm'@'192.168.131.99''
+                                   LAST_ERROR_TIMESTAMP: 2024-03-02 23:30:53.719870
+                               LAST_APPLIED_TRANSACTION: bd4b724b-ab29-11ee-826f-000c294bd026:424254
+     LAST_APPLIED_TRANSACTION_ORIGINAL_COMMIT_TIMESTAMP: 2024-01-29 23:25:54.899869
+    LAST_APPLIED_TRANSACTION_IMMEDIATE_COMMIT_TIMESTAMP: 2024-01-29 23:25:54.899869
+         LAST_APPLIED_TRANSACTION_START_APPLY_TIMESTAMP: 2024-03-02 23:30:53.712714
+           LAST_APPLIED_TRANSACTION_END_APPLY_TIMESTAMP: 2024-03-02 23:30:53.717294
+                                   APPLYING_TRANSACTION: bd4b724b-ab29-11ee-826f-000c294bd026:424255
+         APPLYING_TRANSACTION_ORIGINAL_COMMIT_TIMESTAMP: 2024-01-29 23:26:22.316756
+        APPLYING_TRANSACTION_IMMEDIATE_COMMIT_TIMESTAMP: 2024-01-29 23:26:22.316756
+             APPLYING_TRANSACTION_START_APPLY_TIMESTAMP: 2024-03-02 23:30:53.717343
+                 LAST_APPLIED_TRANSACTION_RETRIES_COUNT: 0
+   LAST_APPLIED_TRANSACTION_LAST_TRANSIENT_ERROR_NUMBER: 0
+  LAST_APPLIED_TRANSACTION_LAST_TRANSIENT_ERROR_MESSAGE:
+LAST_APPLIED_TRANSACTION_LAST_TRANSIENT_ERROR_TIMESTAMP: 0000-00-00 00:00:00.000000
+                     APPLYING_TRANSACTION_RETRIES_COUNT: 0
+       APPLYING_TRANSACTION_LAST_TRANSIENT_ERROR_NUMBER: 0
+      APPLYING_TRANSACTION_LAST_TRANSIENT_ERROR_MESSAGE:
+    APPLYING_TRANSACTION_LAST_TRANSIENT_ERROR_TIMESTAMP: 0000-00-00 00:00:00.000000
+1 row in set (0.00 sec)
+```
+
+关键信息为：Error 'You are not allowed to create a user with GRANT'，可知执行失败的语句是赋权相关的。
+
+从库执行错误的sql为：
+
+```sql
+GRANT SELECT, RELOAD, PROCESS, REPLICATION CLIENT, BACKUP_ADMIN ON *.* TO 'pmm'@'192.168.131.99'
+```
+
+查看从库'pmm'@'192.168.131.99'用户的权限：
+
+```sql
+mysql> show grants for 'pmm'@'192.168.131.99';
++------------------------------------------------------------------------------------+
+| Grants for pmm@192.168.131.99                                                      |
++------------------------------------------------------------------------------------+
+| GRANT SELECT, RELOAD, PROCESS, REPLICATION CLIENT ON *.* TO `pmm`@`192.168.131.99` |
++------------------------------------------------------------------------------------+
+1 row in set (0.00 sec)
+```
+
+查看主库'pmm'@'192.168.131.99'用户的权限：
+
+```sql
+mysql> show grants for 'pmm'@'192.168.131.99';
++------------------------------------------------------------------------------------+
+| Grants for pmm@192.168.131.99                                                      |
++------------------------------------------------------------------------------------+
+| GRANT SELECT, RELOAD, PROCESS, REPLICATION CLIENT ON *.* TO `pmm`@`192.168.131.99` |
+| GRANT BACKUP_ADMIN ON *.* TO `pmm`@`192.168.131.99`                                |
++------------------------------------------------------------------------------------+
+2 rows in set (0.00 sec)
+```
+
+可知报错的sql语句从库已经应用成功。
+
+**三、错误处理方法**
+
+根据前面搜集到的信息可知，从库sql进程错误执行的事务为一个赋权语句，且从库已经应用。所以此事务直接**跳过**即可。
+
+步骤如下：
+
+**1）关闭复制**
+
+```sql
+mysql> stop slave;
+Query OK, 0 rows affected, 1 warning (0.00 sec)
+```
+
+确认是否关闭：
+
+```sql
+mysql> show slave status\G
+*************************** 1. row ***************************
+...
+             Slave_IO_Running: No
+            Slave_SQL_Running: No
+...
+```
+
+**2）确定跳过的事务**
+
+跳过的事务为`Executed_Gtid_Set`的最大值加1。
+
+```sql
+mysql> show slave status\G
+*************************** 1. row ***************************
+...
+           Retrieved_Gtid_Set: bd4b724b-ab29-11ee-826f-000c294bd026:424253-426568
+            Executed_Gtid_Set: 2218063c-aef7-11ee-9e40-000c29f059d3:1-6,
+bd4b724b-ab29-11ee-826f-000c294bd026:1-424254
+...
+```
+
+跳过的事务为：bd4b724b-ab29-11ee-826f-000c294bd026:424255
+
+
+**3）跳过事务**
+
+跳过事务的本质是插入一个空的事务，关键步骤是 set session gtid_next。
+
+跳过事务后，需要将gtid_next设置回automatic。
+
+```sql
+mysql> set session gtid_next='bd4b724b-ab29-11ee-826f-000c294bd026:424255';
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> begin;
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> commit;
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> set session gtid_next='automatic';
+Query OK, 0 rows affected (0.00 sec)
+```
+
+**4）重启复制**
+
+```sql
+mysql> start slave;
+Query OK, 0 rows affected, 1 warning (0.05 sec)
+
+mysql> show slave status\G
+*************************** 1. row ***************************
+               Slave_IO_State: Waiting for source to send event
+                  Master_Host: 192.168.131.99
+                  Master_User: repl
+                  Master_Port: 3306
+                Connect_Retry: 60
+              Master_Log_File: binlog.000068
+          Read_Master_Log_Pos: 586
+               Relay_Log_File: mysql002-relay-bin.000022
+                Relay_Log_Pos: 451
+        Relay_Master_Log_File: binlog.000068
+             Slave_IO_Running: Yes
+            Slave_SQL_Running: Yes
+              Replicate_Do_DB:
+          Replicate_Ignore_DB:
+           Replicate_Do_Table:
+       Replicate_Ignore_Table:
+      Replicate_Wild_Do_Table:
+  Replicate_Wild_Ignore_Table:
+                   Last_Errno: 0
+                   Last_Error:
+                 Skip_Counter: 0
+          Exec_Master_Log_Pos: 586
+              Relay_Log_Space: 1303
+              Until_Condition: None
+               Until_Log_File:
+                Until_Log_Pos: 0
+           Master_SSL_Allowed: No
+           Master_SSL_CA_File:
+           Master_SSL_CA_Path:
+              Master_SSL_Cert:
+            Master_SSL_Cipher:
+               Master_SSL_Key:
+        Seconds_Behind_Master: 0
+Master_SSL_Verify_Server_Cert: No
+                Last_IO_Errno: 0
+                Last_IO_Error:
+               Last_SQL_Errno: 0
+               Last_SQL_Error:
+  Replicate_Ignore_Server_Ids:
+             Master_Server_Id: 1
+                  Master_UUID: bd4b724b-ab29-11ee-826f-000c294bd026
+             Master_Info_File: mysql.slave_master_info
+                    SQL_Delay: 0
+          SQL_Remaining_Delay: NULL
+      Slave_SQL_Running_State: Replica has read all relay log; waiting for more updates
+           Master_Retry_Count: 86400
+                  Master_Bind:
+      Last_IO_Error_Timestamp:
+     Last_SQL_Error_Timestamp:
+               Master_SSL_Crl:
+           Master_SSL_Crlpath:
+           Retrieved_Gtid_Set: bd4b724b-ab29-11ee-826f-000c294bd026:424253-426568
+            Executed_Gtid_Set: 2218063c-aef7-11ee-9e40-000c29f059d3:1-6,
+bd4b724b-ab29-11ee-826f-000c294bd026:1-426568
+                Auto_Position: 1
+         Replicate_Rewrite_DB:
+                 Channel_Name:
+           Master_TLS_Version:
+       Master_public_key_path:
+        Get_master_public_key: 1
+            Network_Namespace:
+1 row in set, 1 warning (0.00 sec)
+```
+
+双YES，说明复制已经恢复正常。
+
+**四、验证主从是否一致**
+
+查看从库数据：
+
+```sql
+mysql> show grants for 'pmm'@'192.168.131.99';
++------------------------------------------------------------------------------------+
+| Grants for pmm@192.168.131.99                                                      |
++------------------------------------------------------------------------------------+
+| GRANT SELECT, RELOAD, PROCESS, REPLICATION CLIENT ON *.* TO `pmm`@`192.168.131.99` |
++------------------------------------------------------------------------------------+
+1 row in set (0.00 sec)
+```
+
+查看主库数据：
+
+```sql
+mysql> show grants for 'pmm'@'192.168.131.99';
++------------------------------------------------------------------------------------+
+| Grants for pmm@192.168.131.99                                                      |
++------------------------------------------------------------------------------------+
+| GRANT SELECT, RELOAD, PROCESS, REPLICATION CLIENT ON *.* TO `pmm`@`192.168.131.99` |
+| GRANT BACKUP_ADMIN ON *.* TO `pmm`@`192.168.131.99`                                |
++------------------------------------------------------------------------------------+
+2 rows in set (0.00 sec)
+```
+
+发现从库`pmm`@`192.168.131.99`用户少了BACKUP_ADMIN权限。
+
+把这个缺失的权限补齐：
+
+```sql
+#主库执行：
+mysql> GRANT BACKUP_ADMIN ON *.* TO `pmm`@`192.168.131.99`;
+Query OK, 0 rows affected (0.00 sec)
+```
+
 # 4 连接相关
 
 ## 4.1 忘记root码
