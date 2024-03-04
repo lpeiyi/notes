@@ -1243,48 +1243,58 @@ select thread_id,event_name,source,sys.format_time(timer_wait),sys.format_time(l
 
 ### 8.2.3 常见用法
 
-**一、以SQL格式备份**
+其中：
 
-```sql
-[mysql@mysql001 bak]$ mysqldump sakila > sakila.bak20240101.sql
-[mysql@mysql001 bak]$ mysqldump sakila actor > sakila_actor.bak20240101.sql
-[mysql@mysql001 bak]$ mysqldump --all-databases --routines --events > all_databases.bak20240101.sql
-[mysql@mysql001 bak]$ mysqldump --all-databases --master-data --single-transation > all_databases2.bak20240101.sql
-[mysql@mysql001 bak]$ mysqldump --databases sakila --skip-add-drop-table --no-create-info --replace > to_test20240101.sql
-```
+–single-transaction 参数会添加下面额外执行：
+SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ
+START TRANSACTION /*!40100 WITH CONSISTENT SNAPSHOT */
 
-我的常用格式：
+–master-data=2和–flush-logs都会添加下面额外操作，注意锁表：
+FLUSH /*!40101 LOCAL */ TABLES
+FLUSH TABLES WITH READ LOCK
+
+**一、全库备份**
 
 ```bash
-[mysql@mysql001 bak]$ mysqldump -uroot -pMysql123. --all_databases --quick --events --flush-logs --delete-master-logs --single-transaction > full.sql
+mysqldump -uroot -p --all-databases --hex-blob --single-transaction --set-gtid-purged=OFF --master-data=2 --flush-logs --routines --triggers --events --extended-insert=TRUE --net-buffer-length=16777216 --max-allowed-packet=67108864 > /disk1/bak/mysqldump/full/mysql_full.sql
 ```
 
-**二、带分隔符文本备份**
+**二、备份指定库**
 
-```sql
-mysql> show variables like 'secure_file_priv';
-+------------------+-----------------------+
-| Variable_name    | Value                 |
-+------------------+-----------------------+
-| secure_file_priv | /var/lib/mysql-files/ |
-+------------------+-----------------------+
-1 row in set (0.00 sec)
-
-mysql> quit
-Bye
-[mysql@mysql001 bak]$ mysqldump --tab=/var/lib/mysql-files/ sakila
-[mysql@mysql001 full]$ ls /var/lib/mysql-files/
-actor_info.sql  category.sql  country.txt        film_actor.txt     film_text.sql  language.sql                    rental.sql                  staff.sql
-actor.sql       category.txt  customer_list.sql  film_category.sql  film_text.txt  language.txt                    rental.txt                  staff.txt
-actor.txt       city.sql      customer.sql       film_category.txt  film.txt       nicer_but_slower_film_list.sql  sales_by_film_category.sql  store.sql
-address.sql     city.txt      customer.txt       film_list.sql      inventory.sql  payment.sql                     sales_by_store.sql          store.txt
-address.txt     country.sql   film_actor.sql     film.sql           inventory.txt  payment.txt                     staff_list.sql
+```bash
+mysqldump -uroot -p test --hex-blob --single-transaction --set-gtid-purged=OFF --master-data=2 --flush-logs --routines --triggers --events --extended-insert=TRUE --net-buffer-length=16777216 --max-allowed-packet=67108864 > /disk1/bak/mysqldump/db/test.sql
 ```
 
-**三、修改备份文件的对象名**
+**三、备份指定表**
 
-```sql
-[mysql@mysql001 bak]$ sed -i 's/'actor'/'newactor'/g' sakila.sql
+```bash
+mysqldump -uroot -p test t1 t2 –hex-blob --single-transaction --set-gtid-purged=OFF --master-data=2 --flush-logs --extended-insert=TRUE --net-buffer-length=16777216 --max-allowed-packet=67108864 > /disk1/bak/mysqldump/tab/test_t1_t2.sql
+```
+
+只备份表结构：
+
+```bash
+mysqldump -uroot -p test t3 –-no-data –hex-blob --single-transaction --set-gtid-purged=OFF --master-data=2 --flush-logs --extended-insert=TRUE --net-buffer-length=16777216 --max-allowed-packet=67108864 > /disk1/bak/mysqldump/tab/test_t3.sql
+```
+
+只备份表数据：
+
+```bash
+mysqldump -uroot -p test t3 –no-create-info –hex-blob --single-transaction --set-gtid-purged=OFF --master-data=2 --flush-logs --extended-insert=TRUE --net-buffer-length=16777216 --max-allowed-packet=67108864 >  /disk1/bak/mysqldump/tab/test_t3.sql
+```
+
+**四、压缩备份**
+
+```bash
+mysqldump -uroot -p –all-databases --hex-blob --single-transaction --set-gtid-purged=OFF --master-data=2 --flush-logs --routines --triggers --events --extended-insert=TRUE --net-buffer-length=16777216 --max-allowed-packet=67108864 | gzip > /disk1/bak/mysqldump/full/mysql_full.sql
+```
+
+通过管道符的方式使用gzip进行压缩。
+
+**五、忽略指定表**
+
+```bash
+mysqldump -uroot -p --databases test --ignore-table=test.t1 --hex-blob --single-transaction --set-gtid-purged=OFF --master-data=2 --flush-logs --routines --triggers --events --extended-insert=TRUE --net-buffer-length=16777216 --max-allowed-packet=67108864 > /disk1/bak/mysqldump/db/test.sql
 ```
 
 ### 8.2.4 恢复

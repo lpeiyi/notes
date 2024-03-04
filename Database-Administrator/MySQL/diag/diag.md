@@ -652,7 +652,7 @@ grep -A100 "CREATE TABLE `demo`" /mysq
 sed -e’/./{H;$!d;}’ -e ‘x;/CREATE TABLE t2/!d;q’ /mysqldata/bak/mysql_bak1.sql
 ```
 
-## 5.4 恢复表数据\表\库
+## 5.4 恢复表数据
 
 ### 5.4.1 单库
 
@@ -665,6 +665,8 @@ mysqlbinlog --start-position=xxx --stop-position=xxx --database xxx binlog.xxx
 ```
 
 ### 5.4.1 主备
+
+
 
 使用xtrabackup，做一个全库备份
 
@@ -683,3 +685,214 @@ mysqlbinlog --start-position=xxx --stop-position=xxx --database xxx binlog.xxx
 再利用表空间传输或是单表逻辑备份，导入生产库中
 
 完成恢复
+
+
+## 5.5 恢复误删的库
+
+```sql
+mysql> select * from test.demo;
++----+------+
+| id | c1   |
++----+------+
+|  1 | a    |
+|  2 | b    |
+|  3 | c    |
+|  5 | e    |
++----+------+
+4 rows in set (0.00 sec)
+```
+
+```bash
+[root@mysql001 full]# mysqldump -uroot -p test --single-transaction --set-gtid-purged=off --master-data=2 --flush-logs --routines --triggers --events --extended-insert=true > ../db/test.sql
+WARNING: --master-data is deprecated and will be removed in a future version. Use --source-data instead.
+Enter password:
+[root@mysql001 db]# ls
+test.sql
+```
+
+```sql
+mysql> insert into test.demo values(6,'f');
+Query OK, 1 row affected (0.00 sec)
+
+mysql> insert into test.demo values(7,'g');
+Query OK, 1 row affected (0.00 sec)
+
+mysql> update test.demo set c1 = 'd' where id = 3;
+Query OK, 1 row affected (0.00 sec)
+Rows matched: 1  Changed: 1  Warnings: 0
+
+mysql> select * from demo;
++----+------+
+| id | c1   |
++----+------+
+|  1 | a    |
+|  2 | b    |
+|  3 | d    |
+|  5 | e    |
+|  6 | f    |
+|  7 | g    |
++----+------+
+6 rows in set (0.00 sec)
+```
+
+```sql
+mysql> drop database test;
+Query OK, 1 row affected (0.02 sec)
+
+mysql> select * from test.demo;
+ERROR 1049 (42000): Unknown database 'test'
+```
+
+```sql
+mysql> show master status\G
+*************************** 1. row ***************************
+             File: binlog.000076
+         Position: 972
+     Binlog_Do_DB:
+ Binlog_Ignore_DB:
+Executed_Gtid_Set: 2218063c-aef7-11ee-9e40-000c29f059d3:1-6,
+bd4b724b-ab29-11ee-826f-000c294bd026:1-426884
+1 row in set (0.00 sec)
+
+mysql> show binlog events in 'binlog.000076';
++---------------+-----+----------------+-----------+-------------+------------------------------------------------------------------------+
+| Log_name      | Pos | Event_type     | Server_id | End_log_pos | Info                                                                   |
++---------------+-----+----------------+-----------+-------------+------------------------------------------------------------------------+
+| binlog.000076 |   4 | Format_desc    |         1 |         126 | Server ver: 8.0.34, Binlog ver: 4                                      |
+| binlog.000076 | 126 | Previous_gtids |         1 |         197 | bd4b724b-ab29-11ee-826f-000c294bd026:14-426881                         |
+| binlog.000076 | 197 | Gtid           |         1 |         276 | SET @@SESSION.GTID_NEXT= 'bd4b724b-ab29-11ee-826f-000c294bd026:426882' |
+| binlog.000076 | 276 | Query          |         1 |         351 | BEGIN                                                                  |
+| binlog.000076 | 351 | Table_map      |         1 |         409 | table_id: 658 (test.demo)                                              |
+| binlog.000076 | 409 | Write_rows     |         1 |         458 | table_id: 658 flags: STMT_END_F                                        |
+| binlog.000076 | 458 | Xid            |         1 |         489 | COMMIT /* xid=5452 */                                                  |
+| binlog.000076 | 489 | Gtid           |         1 |         568 | SET @@SESSION.GTID_NEXT= 'bd4b724b-ab29-11ee-826f-000c294bd026:426883' |
+| binlog.000076 | 568 | Query          |         1 |         652 | BEGIN                                                                  |
+| binlog.000076 | 652 | Table_map      |         1 |         710 | table_id: 658 (test.demo)                                              |
+| binlog.000076 | 710 | Update_rows    |         1 |         760 | table_id: 658 flags: STMT_END_F                                        |
+| binlog.000076 | 760 | Xid            |         1 |         791 | COMMIT /* xid=5454 */                                                  |
+| binlog.000076 | 791 | Gtid           |         1 |         868 | SET @@SESSION.GTID_NEXT= 'bd4b724b-ab29-11ee-826f-000c294bd026:426884' |
+| binlog.000076 | 868 | Query          |         1 |         972 | drop database test /* xid=5456 */                                      |
++---------------+-----+----------------+-----------+-------------+------------------------------------------------------------------------+
+
+[root@mysql001 db]# cp /disk1/data/binlog/binlog.000076 /disk1/bak/tmp/
+```
+
+```bash
+[root@mysql001 db]# cp /disk1/data/binlog/binlog.000076 /disk1/bak/tmp/
+[root@mysql001 db]# grep "CHANGE MASTER TO MASTER_LOG_FILE" /disk1/bak/mysqldump/db/test.sql
+-- CHANGE MASTER TO MASTER_LOG_FILE='binlog.000076', MASTER_LOG_POS=197;
+[root@mysql001 tmp]# mysqlbinlog -uroot -p --database=test --start-position=197 binlog.000076 > 0076bin_197_test.sql
+Enter password:
+[root@mysql001 tmp]# ls
+0076bin_197_test.sql  binlog.000076
+
+[root@mysql001 tmp]# vim 0076bin_197_test.sql
+#注释
+/*drop database test*/
+```
+
+将全备脚本和binlog传到备库：
+
+```bash
+[root@mysql001 tmp]# scp /disk1/bak/mysqldump/db/test.sql 192.168.131.61:/data/recover/
+root@192.168.131.61's password:
+test.sql                                                                                                                           100% 2121     1.6MB/s   00:00
+[root@mysql001 tmp]# scp /disk1/bak/tmp/* 192.168.131.61:/data/recover/
+root@192.168.131.61's password:
+0076bin_197_test.sql                                                                                                               100% 5163     3.3MB/s   00:00
+binlog.000076                                                                                                                      100%  972   955.1KB/s   00:00
+```
+
+备库：
+
+```bash
+[root@recover8 recover]# ls
+0076bin_197_test.sql  binlog.000076  test.sql
+```
+
+
+备库恢复：
+
+直接创建一个，或者从全备脚本中拉脚本，再或者在测试库/开发库导出建库脚本。
+
+我这里图方便，就直接创建了：
+
+```sql
+mysql> create database test;
+Query OK, 1 row affected (0.01 sec)
+```
+
+```bash
+[root@recover8 recover]# mysql -uroot -p test  < test.sql
+Enter password:
+```
+
+```sql
+mysql> select * from test.demo;
++----+------+
+| id | c1   |
++----+------+
+|  1 | a    |
+|  2 | b    |
+|  3 | c    |
+|  5 | e    |
++----+------+
+4 rows in set (0.00 sec)
+```
+
+```bash
+[root@recover8 recover]# mysql -uroot -p test  < 0076bin_197_test.sql
+Enter password:
+ERROR 1781 (HY000) at line 22: @@SESSION.GTID_NEXT cannot be set to UUID:NUMBER when @@GLOBAL.GTID_MODE = OFF.
+```
+
+```bash
+[root@recover8 recover]# mysqlbinlog -uroot -p --database=test --start-position=197 --skip-gtids binlog.000076 > 0076bin_197_test1.sql
+Enter password:
+[root@recover8 recover]# ls
+0076bin_197_test1.sql  0076bin_197_test.sql  binlog.000076  test.sql
+```
+
+```bash
+[root@recover8 recover]# vim 0076bin_197_test1.sql
+#注释
+/*drop database test*/
+```
+
+
+```bash
+[root@recover8 recover]# mysql -uroot -p test  < 0076bin_197_test1.sql
+Enter password:
+```
+
+```sql
+mysql> select * from test.demo;
++----+------+
+| id | c1   |
++----+------+
+|  1 | a    |
+|  2 | b    |
+|  3 | d    |
+|  5 | e    |
+|  6 | f    |
+|  7 | g    |
++----+------+
+6 rows in set (0.00 sec)
+```
+
+## 5.6 The table may not be created in the reserved tablespace 'mysql'.
+
+ERROR 3723 (HY000) at line 524: The table 'replication_asynchronous_connection_failover' may not be created in the reserved tablespace 'mysql'.
+
+
+## 6 重建从库
+
+```bash
+[root@mysql002 full]# mysqldump -uroot -p --all-databases --hex-blob --single-transaction --set-gtid-purged=off --maste                                                            r-data=2 --flush-logs --routines --triggers --events --extended-insert=true --net-buffer-length=1677716 --max-allowed-p                                                            acket=67108864 > full.sql
+WARNING: --master-data is deprecated and will be removed in a future version. Use --source-data instead.
+Enter password:
+[root@mysql002 full]# ll
+total 4628
+-rw-r--r-- 1 root root 4736692 Mar  5 00:19 full.sql
+[root@mysql002 full]# systemctl stop mysqld
+```
