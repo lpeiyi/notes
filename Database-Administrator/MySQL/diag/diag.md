@@ -689,6 +689,25 @@ mysqlbinlog --start-position=xxx --stop-position=xxx --database xxx binlog.xxx
 
 ## 5.5 恢复误删的库
 
+此方法的一个前提条件是数据库打开了binlog，在生产环境中强烈建议打开binlog。这相当于数据库的归档，虽然占用了一定的存储资源，但是他带来的收益是巨大的。当数据库被误操作删除了之后，全量备份只能恢复到备份前的时间点，备份之后新增的数据是没办法回复的，要想恢复这部分数据，那就要借助binlog。
+
+事件的时间节点：
+
+1. 数据库创建、更新（历史数据）；
+2. 全量备份：
+2. 数据库更新（增量数据）；
+3. 误操作删库；
+
+恢复流程大概是：
+
+1. 利用全量备份恢复历史数据；
+2. 利用从全备开始到误操作前binlog恢复增量数据；
+
+
+**一、历史数据**
+
+这里我们以demo表数据作为恢复的参考指标。历史数据如下：
+
 ```sql
 mysql> select * from test.demo;
 +----+------+
@@ -702,13 +721,22 @@ mysql> select * from test.demo;
 4 rows in set (0.00 sec)
 ```
 
+**二、备份数据库**
+
+指定test数据库做备份：
+
 ```bash
 [root@mysql001 full]# mysqldump -uroot -p test --single-transaction --set-gtid-purged=off --master-data=2 --flush-logs --routines --triggers --events --extended-insert=true > ../db/test.sql
 WARNING: --master-data is deprecated and will be removed in a future version. Use --source-data instead.
 Enter password:
+
 [root@mysql001 db]# ls
 test.sql
 ```
+
+**三、插入和更新test数据库中的表**
+
+插入和修改增量数据：
 
 ```sql
 mysql> insert into test.demo values(6,'f');
@@ -735,6 +763,10 @@ mysql> select * from demo;
 6 rows in set (0.00 sec)
 ```
 
+**四、模拟误操作删库**
+
+删库跑路：
+
 ```sql
 mysql> drop database test;
 Query OK, 1 row affected (0.02 sec)
@@ -742,6 +774,10 @@ Query OK, 1 row affected (0.02 sec)
 mysql> select * from test.demo;
 ERROR 1049 (42000): Unknown database 'test'
 ```
+
+**五、查看当前binlog**
+
+当前binlog为binlog.000076。
 
 ```sql
 mysql> show master status\G
@@ -773,25 +809,51 @@ mysql> show binlog events in 'binlog.000076';
 | binlog.000076 | 791 | Gtid           |         1 |         868 | SET @@SESSION.GTID_NEXT= 'bd4b724b-ab29-11ee-826f-000c294bd026:426884' |
 | binlog.000076 | 868 | Query          |         1 |         972 | drop database test /* xid=5456 */                                      |
 +---------------+-----+----------------+-----------+-------------+------------------------------------------------------------------------+
-
-[root@mysql001 db]# cp /disk1/data/binlog/binlog.000076 /disk1/bak/tmp/
 ```
+
+可以看到，增量数据的修改和删库的事件全部都记录到了binlog.000076中。
+
+**六、解析binlog**
+
+将binlog.000076文件复制到临时目录中，目的是为了方便和安全操作，避免又产生误操作。
+
+**注意**：这里千万不要将cp写成mv，否则数据库会报错binlog文件不存在。
 
 ```bash
 [root@mysql001 db]# cp /disk1/data/binlog/binlog.000076 /disk1/bak/tmp/
+```
+
+查看全备的binlog的位置：
+
+```bash
 [root@mysql001 db]# grep "CHANGE MASTER TO MASTER_LOG_FILE" /disk1/bak/mysqldump/db/test.sql
 -- CHANGE MASTER TO MASTER_LOG_FILE='binlog.000076', MASTER_LOG_POS=197;
+```
+
+MASTER_LOG_FILE='binlog.000076'和MASTER_LOG_POS=197，说明全量备份前的binlog文件为binlog.000076，位置点为197。因此，全备文件包含了binlog.000076文件197位置点前所有的数据。
+
+所以，增量数据要从binlog.000076文件197位置点开始恢复，mysqlbinlog解析时加上`--start-position=197`，命令如下:
+
+```bash
 [root@mysql001 tmp]# mysqlbinlog -uroot -p --database=test --start-position=197 binlog.000076 > 0076bin_197_test.sql
 Enter password:
 [root@mysql001 tmp]# ls
 0076bin_197_test.sql  binlog.000076
+```
 
+此外，一个重要的点就是，需要注释binlog中误操作命令，否则恢复无效：
+
+```bash
 [root@mysql001 tmp]# vim 0076bin_197_test.sql
 #注释
 /*drop database test*/
 ```
 
-将全备脚本和binlog传到备库：
+**七、将回复脚本传到备库（用来做恢复的实例）**
+
+恢复操作最好放到非生产库中进行，原因是数据恢复其实是高危操作，不可控因素较多，恢复过程中难免还会出现错误。
+
+因此，我们把恢复脚本发送到某个空闲的备库中操作，数据库版本号最好是一致的，否则可能会出现兼容问题。
 
 ```bash
 [root@mysql001 tmp]# scp /disk1/bak/mysqldump/db/test.sql 192.168.131.61:/data/recover/
@@ -803,17 +865,24 @@ root@192.168.131.61's password:
 binlog.000076                                                                                                                      100%  972   955.1KB/s   00:00
 ```
 
-备库：
+备库中查看：
 
 ```bash
 [root@recover8 recover]# ls
 0076bin_197_test.sql  binlog.000076  test.sql
 ```
 
+**八、执行恢复操作**
 
-备库恢复：
+**1）数据库创建**
 
-直接创建一个，或者从全备脚本中拉脚本，再或者在测试库/开发库导出建库脚本。
+因为备份文件test.sql只是备份了test数据库的数据，并不包含数据库的创建语句，所以要手动创建数据库。
+
+常用的几种创建方式：
+
+- 直接创建一个；
+- 从全备脚本中拉脚本；
+- 在测试库/开发库中导出建库脚本。
 
 我这里图方便，就直接创建了：
 
@@ -822,10 +891,16 @@ mysql> create database test;
 Query OK, 1 row affected (0.01 sec)
 ```
 
+**2）恢复全备数据**
+
+执行全备脚本导入：
+
 ```bash
 [root@recover8 recover]# mysql -uroot -p test  < test.sql
 Enter password:
 ```
+
+查看原始数据是否恢复：
 
 ```sql
 mysql> select * from test.demo;
@@ -840,30 +915,38 @@ mysql> select * from test.demo;
 4 rows in set (0.00 sec)
 ```
 
+**3）增量数据恢复**
+
+导入增量数据文件：
+
 ```bash
 [root@recover8 recover]# mysql -uroot -p test  < 0076bin_197_test.sql
 Enter password:
 ERROR 1781 (HY000) at line 22: @@SESSION.GTID_NEXT cannot be set to UUID:NUMBER when @@GLOBAL.GTID_MODE = OFF.
 ```
 
+报错，脚本中包含@@SESSION.GTID_NEXT，不能应用。
+
+重新解析binlog.000076，跳过gtid：
+
 ```bash
 [root@recover8 recover]# mysqlbinlog -uroot -p --database=test --start-position=197 --skip-gtids binlog.000076 > 0076bin_197_test1.sql
 Enter password:
 [root@recover8 recover]# ls
 0076bin_197_test1.sql  0076bin_197_test.sql  binlog.000076  test.sql
-```
-
-```bash
 [root@recover8 recover]# vim 0076bin_197_test1.sql
 #注释
 /*drop database test*/
 ```
 
+重新导入增量数据：
 
 ```bash
 [root@recover8 recover]# mysql -uroot -p test  < 0076bin_197_test1.sql
 Enter password:
 ```
+
+**4）查看增量数据是否恢复**
 
 ```sql
 mysql> select * from test.demo;
@@ -879,6 +962,12 @@ mysql> select * from test.demo;
 +----+------+
 6 rows in set (0.00 sec)
 ```
+
+数据已经完成恢复，实验成功。
+
+**九、恢复到生产库**
+
+最后把备库中的数据库备份，重新导入生产库就算完成恢复了。
 
 ## 5.6 The table may not be created in the reserved tablespace 'mysql'.
 
