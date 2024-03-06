@@ -9,12 +9,20 @@
 ### 数据库管理
 
 **- Oracle**   
-[Admin-of-Oracle](https://github.com/lpeiyi/notes/blob/main/Database-Administrator/Oracle/Administrators-Guide/Administrators-Guide.md)   
+[ORACLE_HOME](https://github.com/lpeiyi/notes/tree/main/Database-Administrator/Oracle)
+- [Admin-of-Oracle](https://github.com/lpeiyi/notes/blob/main/Database-Administrator/Oracle/Administrators-Guide/Administrators-Guide.md)   
+- [Diag](https://github.com/lpeiyi/notes/blob/main/Database-Administrator/Oracle/Diag/diag.md)
+- [Installation-Guide](https://github.com/lpeiyi/notes/blob/main/Database-Administrator/Oracle/19C-RAC-Install/rac-installation-guide-linux.md)
 
 **- MySQL**   
-[Admin-of-MySQL](https://github.com/lpeiyi/notes/blob/main/Database-Administrator/MySQL/Admin/Admin-of-MySQL.md)   
-[PMP](https://github.com/lpeiyi/notes/blob/main/zabbix/percona-zabbix-templates.md)   
-[PMM](https://github.com/lpeiyi/notes/blob/main/Database-Administrator/MySQL/monitoring/PMM/pmm.md)
+[MySQL_HOME](https://github.com/lpeiyi/notes/tree/main/Database-Administrator/MySQL)
+- [Admin-of-MySQL](https://github.com/lpeiyi/notes/blob/main/Database-Administrator/MySQL/Admin/Admin-of-MySQL.md)
+- [Diag](https://github.com/lpeiyi/notes/blob/main/Database-Administrator/MySQL/diag/diag.md)
+- [Backup](https://github.com/lpeiyi/notes/tree/main/Database-Administrator/MySQL/backup)
+- [PMP-Monitoring](https://github.com/lpeiyi/notes/blob/main/zabbix/percona-zabbix-templates.md)   
+- [PMM-Monitoring](https://github.com/lpeiyi/notes/blob/main/Database-Administrator/MySQL/monitoring/PMM/pmm.md)
+- [Percona-Toolkit](https://github.com/lpeiyi/notes/blob/main/Database-Administrator/MySQL/percona-toolkit/percona-toolkit.md)
+- [Scripts](https://github.com/lpeiyi/notes/tree/main/Database-Administrator/MySQL/scripts)
 
 ##
 
