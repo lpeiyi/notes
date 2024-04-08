@@ -1393,6 +1393,187 @@ yum [选项] [参数]
    [root@hadoop101 yum.repos.d]# yum list | grep firefox
    [root@hadoop101 ~]#yum -y install firefox
    ```
+
+## 6.3 搭建本地YUM源（内网离线环境）
+
+### 6.3.1 介绍
+
+内网环境由于离线，很多依赖包不能联网下载，所以在部署的时候比较麻烦。因此有必要搭建一个本地yum源，供离线环境使用。
+
+搭建离线yum源有两种方式，第一种是使用iso镜像搭建，第二种是将所有的网络yum源rpm包下载到本地搭建离线yum源。
+
+### 6.3.2 iso镜像搭建
+
+```bash
+[root@localhost ～]#mkdir /root/test
+[root@r11gn1 iso]# mount -o loop OracleLinux-R6-U8-Server-x86_64-dvd.iso /mnt/
+[root@localhost ～]# cd /etc/yum.repos.d/
+[root@r11gn1 yum.repos.d]# yum-config-manager --add file:///mnt
+[root@r11gn1 yum.repos.d]# echo gpgcheck=0 >> mnt.repo
+
+#检查
+[root@r11gn1 yum.repos.d]# yum repolist
+Loaded plugins: refresh-packagekit, security, ulninfo
+mnt                                                                                                                                      | 3.7 kB     00:00 ...
+mnt/primary_db                                                                                                                           | 3.1 MB     00:00 ...
+repo id                                                              repo name                                                                            status
+mnt                                                                  added from: file:///mnt                                                              3,841
+repolist: 3,841
+```
+
+### 6.3.3 部署离线yum源
+
+使用iso镜像的方式作用比较局限，只有四千多个包，很多常用的包他是没有的。因此才有了次方法，使用这种方式搭建的yum源几乎全部覆盖了所有的软件依赖包。
+
+原理是在有网络的环境里先将所有rpm包，下载到本地。然后在拷贝到离线环境然后在搭建本地yum源。
+
+**一、网络yum源**
+
+在可以联网的环境，搭建好网络yum源，确保可以使用。
+
+**二、下载rpm包**
+
+```bash
+[root@zabbix6 ~]# cd /etc/yum.repos.d/
+[root@zabbix6 yum.repos.d]# mkdir mirror
+
+#这一步比较久，放着跑就好
+[root@zabbix6 yum.repos.d]# reposync -np mirror
+
+[root@zabbix6 yum.repos.d]# cd mirror
+[root@zabbix6 yum.repos.d]# createrepo .
+```
+
+执行完以上命令后，将mirror目录打包上传到离线环境的/etc/yum.repos.d/路径中。
+
+```bash
+[root@shared yum.repos.d]# ll
+total 2
+drwxr-xr-x. 7 root root  79 Mar 31 09:39 mirror
+-rw-r--r--. 1 root root 181 Mar 31 19:58 mirror.repo
+```
+
+下面的步骤全部在离线机器上进行操作。
+
+**三、配置yum源repo文件**
+
+```bash
+[root@zabbix6 yum.repos.d]# yum-config-manager --add file:///etc/yum.repos.d/mirror
+Loaded plugins: refresh-packagekit
+adding repo from: file:///etc/yum.repos.d/mirror
+
+[mirror_]
+name=added from: file:///etc/yum.repos.d/mirror
+baseurl=file:///etc/yum.repos.d/mirror
+enabled=1
+
+[root@zabbix6 yum.repos.d]# echo gpgcheck=0 >> mnt.repo
+```
+
+验证：
+
+```bash
+[root@shared yum.repos.d]# yum repolist
+Loaded plugins: ulninfo
+repo_local                                                                                                                               | 2.9 kB  00:00:00
+repo_local/primary_db                                                                                                                    |  18 MB  00:00:00
+repo id                                                                    repo name                                                                      status
+repo_local                                                                 repo for local                                                                 29,313
+repolist: 29,313
+```
+
+可以看到，有差不多3万个yum源，是iso镜像搭建的6倍之多。
+
+### 6.3.4 nfs挂载
+
+要设置刚刚这台机器作为离线的共享yum源，共享到所有离线的机器上。
+
+**一、安装nfs**
+
+```bash
+[root@shared yum.repos.d]# yum -y install yum-utils nfs-utils nfs
+
+[root@shared yum.repos.d]# systemctl start nfs
+[root@shared yum.repos.d]# systemctl status nfs
+● nfs-server.service - NFS server and services
+   Loaded: loaded (/usr/lib/systemd/system/nfs-server.service; disabled; vendor preset: disabled)
+   Active: active (exited) since Sun 2024-03-31 20:08:59 CST; 3s ago
+  Process: 2096 ExecStartPost=/bin/sh -c if systemctl -q is-active gssproxy; then systemctl reload gssproxy ; fi (code=exited, status=0/SUCCESS)
+  Process: 2074 ExecStart=/usr/sbin/rpc.nfsd $RPCNFSDARGS (code=exited, status=0/SUCCESS)
+  Process: 2073 ExecStartPre=/usr/sbin/exportfs -r (code=exited, status=0/SUCCESS)
+ Main PID: 2074 (code=exited, status=0/SUCCESS)
+   CGroup: /system.slice/nfs-server.service
+
+Mar 31 20:08:58 shared systemd[1]: Starting NFS server and services...
+Mar 31 20:08:59 shared systemd[1]: Started NFS server and services.
+```
+
+**二、添加共享目录**
+
+在 /etc/exports 文件中添加一行来共享 /etc/yum.repos.d/mirror 目录，并且允许所有主机（*）以读写（rw）权限访问。
+
+```bash
+[root@shared yum.repos.d]# vim /etc/exports
+[root@shared yum.repos.d]# /etc/yum.repos.d/mirror *(rw)
+[root@shared yum.repos.d]# systemctl restart nfs
+[root@shared yum.repos.d]# showmount -e localhost
+Export list for localhost:
+/etc/yum.repos.d/mirror *
+```
+
+**三、远程挂载**
+
+在共享yum源的机器上关闭防火墙，否则其他机器挂载不上nfs共享目录：
+
+```bash
+[root@shared yum.repos.d]# systemctl stop firewalld
+[root@shared yum.repos.d]# systemctl disable firewalld
+```
+
+到其他需要使用yum源的机器上执行以下步骤：安装nfs，远程挂载共享yum源目录：
+
+```bash
+[root@r11gn1 yum.repos.d]# yum -y install yum-utils nfs-utils nfs
+[root@r11gn1 yum.repos.d]# systemctl start nfs
+[root@r11gn1 yum.repos.d]# mount -t nfs 192.168.56.66:/etc/yum.repos.d/mirror /mnt/
+[root@r11gn1 yum.repos.d]# df -h
+Filesystem            Size  Used Avail Use% Mounted on
+192.168.56.66:/etc/yum.repos.d/mirror
+                       46G   31G   16G  67% /mnt
+```
+
+检查共享目录情况：
+
+```bash
+[root@r11gn1 yum.repos.d]# showmount -e 192.168.56.66
+Export list for 192.168.56.66:
+/etc/yum.repos.d/mirror *
+```
+
+**四、创建yum文件**
+
+```bash
+[root@r11gn1 yum.repos.d]# yum-config-manager --add file:///mnt/
+Loaded plugins: refresh-packagekit
+adding repo from: file:///mnt/
+
+[mnt_]
+name=added from: file:///mnt/
+baseurl=file:///mnt/
+enabled=1
+
+[root@r11gn1 yum.repos.d]# echo gpgcheck=0 >> mnt.repo
+[root@r11gn1 yum.repos.d]# yum repolist
+Loaded plugins: refresh-packagekit, security, ulninfo
+mnt1_                                                                                                                | 2.9 kB     00:00 ...
+repo id                                                   repo name                                                                   status
+mnt                                                       added from: file:///mnt                                                      3,841
+mnt1_                                                     added from: file:///mnt1/                                                   29,313
+repolist: 33,154
+```
+
+成功！！！
+
 # 七、三剑客
 
 | 命令 | 说明 |
