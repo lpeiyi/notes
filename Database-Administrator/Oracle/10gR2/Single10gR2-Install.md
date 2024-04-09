@@ -420,7 +420,7 @@ access control disabled, clients can connect from any host
 
 ![alt text](image-6.png)
 
-#### 1.3.2.10 按照提示运行.sh
+#### 1.3.2.10 按照提示运行root\.sh
 
 ![alt text](image-7.png)
 
@@ -430,8 +430,245 @@ access control disabled, clients can connect from any host
 
 ![alt text](image-9.png)
 
-## 1.4 监听配置
-## 1.5 创建数据库
-## 1.6 后续维护
+## 1.4 打R205补丁
+
+刚刚安装的是R201的数据库软件，现在打补丁升级到R205版本。也可以选择后续再升级，但是后续升级比较耗时，而且失败的话还要做数据库恢复，相对比较麻烦，建议在安装好数据库软件后就进行升级。
+
+### 1.4.1 停止oracle相关服务
+
+一般升级前需要做好数据备份，并把oracle相关服务和数据库关掉。
+
+- 数据备份
+   
+- 关闭相关服务
+  - 关闭监听：lsnrctl stop
+  - 关闭oem：emctl stop dbconsole
+  - 关闭sqlplus
+
+- 关闭数据库：shutdown immediate
+
+检查是否全部都关闭了，如：ps -ef | grep sqlplus
+
+### 1.4.2 解压升级包
+
+```bash
+[oracle@oracle10g ~]$ cd soft/
+[oracle@oracle10g soft]$ unzip p8202632_10205_Linux-x86-64.zip
+```
+
+### 1.4.3 执行脚本开始升级
+
+```bash
+[oracle@oracle10g soft]$ cd Disk1/
+[oracle@oracle10g Disk1]$ ./runInstaller
+```
+
+直接点击下一步。
+
+![alt text](image-10.png)
+
+
+#### 1.4.3.1 指定升级名字和路径
+
+点击下一步。
+
+![alt text](image-11.png)
+
+
+#### 1.4.3.2 邮箱和支持密码
+
+取消勾选mo支持，点击下一步。
+
+![alt text](image-12.png)
+
+点击yes。
+
+![alt text](image-13.png)
+
+#### 1.4.3.3 升级前配置检查
+
+一定要确保所有检查项都通过，点击下一步。
+
+![alt text](image-14.png)
+
+#### 1.4.3.4 开始升级
+
+升级概要，点击install开始升级。
+
+![alt text](image-15.png)
+
+#### 1.4.3.5 root执行指定目录下脚本
+
+root用户新开一个会话，执行提供的脚本。
+
+![alt text](image-16.png)
+
+回车加三个y。
+
+![alt text](image-17.png)
+
+执行完后回到安装页面，点击ok，最后退出。
+
+#### 1.4.3.6 查看数据库软件版本
+
+可以看到版本为10gR205。
+
+![alt text](image-18.png)
+
+## 1.5 监听配置
+
+创建数据库实例前应该把监听给配了。创建数据库过程应该遵循这个顺序： 先配置监听， 再配置ASM 实例， 最后创建数据库实例， 这样可以减少出错的概率。
+
+### 1.5.1 添加一个监听
+
+netca调出安装界面。
+
+```bash
+[oracle@oracle10g Disk1]$ netca
+```
+
+保持监听配置选项，点击下一步。
+
+![alt text](image-19.png)
+
+### 1.5.2 添加一个监听
+
+add添加，点击下一步。
+
+![alt text](image-20.png)
+
+### 1.5.3 指定监听名字、传输协议和端口
+
+选择默认的即可。
+
+![alt text](image-21.png)
+
+![alt text](image-22.png)
+
+![alt text](image-23.png)
+
+### 1.5.4 完成监听添加
+
+选择no，不配置其他监听。
+
+![alt text](image-24.png)
+
+### 1.5.5 查看监听状态
+
+监听添加成功，并且已经启动。
+
+![alt text](image-25.png)
+
+查看监听相关文件：
+
+```bash
+[oracle@oracle10g ~]$ ls $ORACLE_HOME/network/admin/
+listener.ora  samples  shrept.lst  tnsnames.ora
+```
+
+## 1.6 dbca创建数据库
+
+```bash
+[oracle@oracle10g ~]$ dbca
+```
+
+选择创建一个数据库。
+
+![alt text](image-26.png)
+
+### 1.6.1 选择数据库类型
+
+默认。
+
+![alt text](image-27.png)
+
+### 1.6.2 指定数据库名
+
+指定数据库名为orcl。
+
+![alt text](image-28.png)
+
+### 1.6.3 指定是否安装OEM
+
+不安装。
+
+![alt text](image-29.png)
+
+### 1.6.4 指定数据库系统帐号密码
+
+指定使用统一的密码。
+
+![alt text](image-30.png)
+
+### 1.6.5 指定文件系统存储方式
+
+![alt text](image-31.png)
+
+### 1.6.6 指定创建的数据库文件位置
+
+默认。
+
+![alt text](image-32.png)
+
+### 1.6.7 设置闪回和归档
+
+设置闪回区位置和大小：FRA和2G。先不开归档。
+
+![alt text](image-33.png)
+
+### 1.6.8 选择是否创建样例用户
+
+不创建。
+
+![alt text](image-34.png)
+
+### 1.6.9 设置数据库主要参数
+
+内存设置：
+
+![alt text](image-35.png)
+
+内存进程数：
+
+![alt text](image-36.png)
+
+内存字符集：
+
+![alt text](image-37.png)
+
+### 1.6.10 一路默认
+
+![alt text](image-38.png)
+
+![alt text](image-39.png)
+
+![alt text](image-40.png)
+
+![alt text](image-41.png)
+
+![alt text](image-42.png)
+
+## 1.7 后续检查
+
+### 1.7.1 检查监听
+
+![alt text](image-43.png)
+
+### 1.7.2 检查数据字段
+
+```bash
+SQL> select dbid,name,log_mode,version_time,open_mode from v$database;
+
+      DBID NAME      LOG_MODE     VERSION_T OPEN_MODE
+---------- --------- ------------ --------- ----------
+1693663630 ORCL      NOARCHIVELOG 10-APR-24 READ WRITE
+
+
+SQL> select instance_name,version from v$instance;
+
+INSTANCE_NAME    VERSION
+---------------- -----------------
+orcl             10.2.0.5.0
+```
 
 # 2 linux5 10gR2基于ASM安装
